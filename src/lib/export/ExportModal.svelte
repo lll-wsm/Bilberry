@@ -68,11 +68,12 @@
   }
 
   .modal {
-    background: var(--bg);
+    background: var(--bg-primary);
     border-radius: 12px;
     padding: 24px;
     min-width: 320px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    color: var(--text-normal);
   }
 
   h2 {
@@ -92,12 +93,13 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-divider);
     border-radius: 8px;
-    background: var(--bg);
+    background: var(--bg-secondary);
     cursor: pointer;
     text-align: left;
     width: 100%;
+    color: var(--text-normal);
   }
 
   .option-btn:hover {
@@ -111,7 +113,6 @@
   .label {
     font-size: 14px;
     font-weight: 500;
-    color: var(--text);
   }
 
   .desc {

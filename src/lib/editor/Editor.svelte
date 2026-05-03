@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
-  import { lineNumbers } from "@codemirror/view";
   import { EditorState, Compartment } from "@codemirror/state";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { createExtensions } from "./cm-extensions";
@@ -21,7 +20,6 @@
   let isSyncing = false;
 
   const themeCompartment = new Compartment();
-  const lineNumbersCompartment = new Compartment();
 
   function getThemeExt($theme: string): Extension {
     const baseTheme = $theme === "dark" ? oneDark : [];
@@ -43,9 +41,10 @@
   }
 
   onMount(() => {
-    // Get initial values synchronously via one-shot subscriptions
+    // Get initial theme value synchronously via one-shot subscription
     let initialTheme: Extension = [];
-    theme.subscribe(($t) => { initialTheme = getThemeExt($t); })();
+    const tmp = theme.subscribe(($t) => { initialTheme = getThemeExt($t); });
+    tmp();
 
     const state = EditorState.create({
       doc: content,
@@ -53,7 +52,6 @@
         basicSetup,
         ...createExtensions(),
         themeCompartment.of(initialTheme),
-        lineNumbersCompartment.of($settingsStore.showLineNumbers ? lineNumbers() : []),
         EditorView.editable.of(!readonly),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isSyncing && onContentChange) {
@@ -76,20 +74,8 @@
       }
     });
 
-    // Reactive line numbers switch
-    const unsubSettings = settingsStore.subscribe(($settings) => {
-      try {
-        view.dispatch({
-          effects: lineNumbersCompartment.reconfigure($settings.showLineNumbers ? lineNumbers() : []),
-        });
-      } catch {
-        // view destroyed
-      }
-    });
-
     return () => {
       unsubTheme();
-      unsubSettings();
       isDestroyed = true;
       view.destroy();
     };
