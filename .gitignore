@@ -1,0 +1,73 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-error.log
+
+# Dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Svelte / Vite
+.svelte-kit/
+.vite/
+build/
+
+# Rust / Tauri
+src-tauri/target/
+
+# Optional: if you don't want to commit the Tauri generated schema files
+# src-tauri/gen/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.vim
+.env
+.env.*
+!.env.example
+
+# OS-specific
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+# IDEs and System files
+.directory
+*~
+
+# Backup files
+*.bak
+*.orig
