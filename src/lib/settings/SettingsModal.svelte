@@ -8,12 +8,14 @@
   let lineHeight = $state($settingsStore.lineHeight);
   let autoSaveDelay = $state($settingsStore.autoSaveDelay);
   let previewTheme = $state($settingsStore.previewTheme);
+  let showLineNumbers = $state($settingsStore.showLineNumbers);
 
   function save() {
     settingsStore.updateSetting("fontSize", fontSize);
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
     settingsStore.updateSetting("previewTheme", previewTheme);
+    settingsStore.updateSetting("showLineNumbers", showLineNumbers);
     applyTheme(previewTheme);
     onclose?.();
   }
@@ -91,6 +93,15 @@
         </div>
       </div>
 
+      <div class="field checkbox-field">
+        <input
+          id="showLineNumbers"
+          type="checkbox"
+          bind:checked={showLineNumbers}
+        />
+        <label for="showLineNumbers">显示行号</label>
+      </div>
+
       <div class="actions">
         <button class="btn primary" onclick={save}>保存</button>
         <button class="btn" onclick={onclose}>取消</button>
@@ -137,6 +148,22 @@
     font-weight: 500;
     margin-bottom: 6px;
     color: var(--text-normal);
+  }
+
+  .checkbox-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .checkbox-field input {
+    width: auto;
+    margin: 0;
+  }
+
+  .checkbox-field label {
+    margin-bottom: 0;
+    cursor: pointer;
   }
 
   select {

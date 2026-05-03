@@ -11,6 +11,7 @@ export interface Settings {
   autoSaveDelay: number;
   sidebarWidth: number;
   previewTheme: string;
+  showLineNumbers: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -21,6 +22,7 @@ const defaultSettings: Settings = {
   autoSaveDelay: 1000,
   sidebarWidth: 240,
   previewTheme: "default",
+  showLineNumbers: true,
 };
 
 function createSettingsStore() {
