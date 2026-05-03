@@ -86,9 +86,9 @@
 <div
   bind:this={container}
   class="editor-container"
-  style="font-size: {$settingsStore.fontSize}px;
-         font-family: {$settingsStore.fontFamily};
-         line-height: {$settingsStore.lineHeight};"
+  style:font-size="{$settingsStore.fontSize}px"
+  style:font-family={$settingsStore.fontFamily}
+  style:line-height={$settingsStore.lineHeight}
 ></div>
 
 <style>

@@ -1,4 +1,7 @@
 import { writable } from "svelte/store";
+import { loadDataFile, saveDataFile } from "./persistence";
+
+const FILE_NAME = "settings.json";
 
 export interface Settings {
   fontSize: number;
@@ -7,6 +10,7 @@ export interface Settings {
   autoSave: boolean;
   autoSaveDelay: number;
   sidebarWidth: number;
+  previewTheme: string;
 }
 
 const defaultSettings: Settings = {
@@ -16,27 +20,14 @@ const defaultSettings: Settings = {
   autoSave: true,
   autoSaveDelay: 1000,
   sidebarWidth: 240,
+  previewTheme: "default",
 };
 
-function loadFromStorage(): Settings {
-  try {
-    const stored = localStorage.getItem("bilberry-settings");
-    if (stored) {
-      return { ...defaultSettings, ...JSON.parse(stored) };
-    }
-  } catch {}
-  return defaultSettings;
-}
-
-function saveToStorage(s: Settings) {
-  try {
-    localStorage.setItem("bilberry-settings", JSON.stringify(s));
-  } catch {}
-}
-
 function createSettingsStore() {
-  const initial = loadFromStorage();
-  const { subscribe, update, set } = writable<Settings>(initial);
+  const { subscribe, update, set } = writable<Settings>(defaultSettings);
+
+  // Load persisted settings on init
+  loadDataFile(FILE_NAME, defaultSettings).then((s) => set(s));
 
   return {
     subscribe,
@@ -44,14 +35,14 @@ function createSettingsStore() {
     updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
       update((s) => {
         const updated = { ...s, [key]: value };
-        saveToStorage(updated);
+        saveDataFile(FILE_NAME, updated);
         return updated;
       });
     },
 
     reset() {
       set(defaultSettings);
-      saveToStorage(defaultSettings);
+      saveDataFile(FILE_NAME, defaultSettings);
     },
   };
 }

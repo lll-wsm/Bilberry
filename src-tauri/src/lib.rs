@@ -24,6 +24,8 @@ pub fn run() {
             commands::get_wikilinks,
             commands::build_search_index,
             commands::search_notes,
+            commands::save_data_file,
+            commands::load_data_file,
             export::export_html,
         ])
         .run(tauri::generate_context!())

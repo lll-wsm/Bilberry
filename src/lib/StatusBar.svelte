@@ -1,6 +1,16 @@
 <script lang="ts">
   import { vaultStore } from "../stores/vault";
   import { editorStore } from "../stores/editor";
+  import { theme } from "../stores/theme";
+  import { Sun, Moon, Settings } from "lucide-svelte";
+
+  let {
+    onToggleTheme,
+    onOpenSettings,
+  }: {
+    onToggleTheme?: () => void;
+    onOpenSettings?: () => void;
+  } = $props();
 
   let wordCount = $derived(
     $vaultStore.currentContent
@@ -33,6 +43,17 @@
 {#if $vaultStore.vault}
   <div class="statusbar">
     <span class="left">
+      <button class="icon-btn" onclick={onToggleTheme} title="切换主题">
+        {#if $theme === "dark"}
+          <Sun size={13} />
+        {:else}
+          <Moon size={13} />
+        {/if}
+      </button>
+      <button class="icon-btn" onclick={onOpenSettings} title="设置">
+        <Settings size={13} />
+      </button>
+      <span class="divider"></span>
       <span class="file-name">
         {$vaultStore.currentFilePath
           ? $vaultStore.currentFilePath.split("/").pop()
@@ -122,5 +143,31 @@
     opacity: 1;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
+  }
+
+  .icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: white;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.85;
+    transition: opacity 0.1s ease, background 0.1s ease;
+  }
+
+  .icon-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .divider {
+    width: 1px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.3);
+    margin: 0 2px;
   }
 </style>

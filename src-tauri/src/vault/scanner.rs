@@ -33,7 +33,7 @@ pub fn scan_directory(path: &str) -> Result<Vec<FileEntry>, String> {
             let mut fe = FileEntry::new(path.to_string_lossy().to_string(), name, true);
             fe.children = Some(children);
             entries.push(fe);
-        } else if name.ends_with(".md") {
+        } else {
             entries.push(FileEntry::new(path.to_string_lossy().to_string(), name, false));
         }
     }

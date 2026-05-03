@@ -1,24 +1,51 @@
 <script lang="ts">
   import { settingsStore } from "../../stores/settings";
+  import { themes, applyTheme } from "../preview/themes";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
 
   let fontSize = $state($settingsStore.fontSize);
   let lineHeight = $state($settingsStore.lineHeight);
   let autoSaveDelay = $state($settingsStore.autoSaveDelay);
+  let previewTheme = $state($settingsStore.previewTheme);
 
   function save() {
     settingsStore.updateSetting("fontSize", fontSize);
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
+    settingsStore.updateSetting("previewTheme", previewTheme);
+    applyTheme(previewTheme);
     onclose?.();
+  }
+
+  function handleThemeChange(e: Event) {
+    const target = e.target as HTMLSelectElement;
+    previewTheme = target.value;
+    applyTheme(previewTheme);
   }
 </script>
 
 {#if show}
-  <div class="overlay" onclick={onclose}>
+  <div class="overlay" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}>
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2>设置</h2>
+
+      <div class="field">
+        <label for="previewTheme">预览主题</label>
+        <select id="previewTheme" value={previewTheme} onchange={handleThemeChange}>
+          <option value="default">Default</option>
+          <optgroup label="浅色">
+            {#each themes.filter(t => t.mode === "light") as t}
+              <option value={t.id}>{t.label}</option>
+            {/each}
+          </optgroup>
+          <optgroup label="深色">
+            {#each themes.filter(t => t.mode === "dark") as t}
+              <option value={t.id}>{t.label}</option>
+            {/each}
+          </optgroup>
+        </select>
+      </div>
 
       <div class="field">
         <label for="fontSize">字号</label>
@@ -84,11 +111,15 @@
   }
 
   .modal {
-    background: var(--bg);
+    background: var(--bg-primary);
     border-radius: 12px;
     padding: 24px;
-    min-width: 360px;
+    min-width: 400px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    color: var(--text-normal);
   }
 
   h2 {
@@ -105,7 +136,23 @@
     font-size: 13px;
     font-weight: 500;
     margin-bottom: 6px;
-    color: var(--text);
+    color: var(--text-normal);
+  }
+
+  select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border-divider);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-normal);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  select:focus {
+    border-color: var(--interactive-accent);
   }
 
   .input-row {
@@ -134,12 +181,12 @@
 
   .btn {
     padding: 6px 16px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-divider);
     border-radius: 6px;
-    background: var(--bg-toolbar);
+    background: var(--bg-secondary);
     cursor: pointer;
     font-size: 13px;
-    color: var(--text);
+    color: var(--text-normal);
   }
 
   .btn:hover {
@@ -147,12 +194,12 @@
   }
 
   .btn.primary {
-    background: #0366d6;
+    background: var(--interactive-accent);
     color: white;
-    border-color: #0366d6;
+    border-color: var(--interactive-accent);
   }
 
   .btn.primary:hover {
-    background: #0256b9;
+    opacity: 0.9;
   }
 </style>

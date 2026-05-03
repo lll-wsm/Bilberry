@@ -1,7 +1,6 @@
 <script lang="ts">
   import { editorStore, type EditorMode } from "../../stores/editor";
   import ExportModal from "../export/ExportModal.svelte";
-  import SettingsModal from "../settings/SettingsModal.svelte";
 
   const modes: { value: EditorMode; label: string; icon: string }[] = [
     { value: "source", label: "源码", icon: "📝" },
@@ -11,7 +10,6 @@
   ];
 
   let showExport = $state(false);
-  let showSettings = $state(false);
 </script>
 
 <div class="toolbar">
@@ -31,13 +29,9 @@
   <button class="mode-btn" onclick={() => (showExport = true)} title="导出">
     <span class="icon">📤</span>
   </button>
-  <button class="mode-btn" onclick={() => (showSettings = true)} title="设置">
-    <span class="icon">⚙️</span>
-  </button>
 </div>
 
 <ExportModal show={showExport} onclose={() => (showExport = false)} />
-<SettingsModal show={showSettings} onclose={() => (showSettings = false)} />
 
 <style>
   .toolbar {

@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { editorStore } from "./editor";
+import { getEncoding, setEncoding } from "./fileEncodings";
 
 export interface FileEntry {
   path: string;
@@ -125,11 +126,11 @@ function createVaultStore() {
     },
 
     async openNote(path: string) {
-      // Keep existing encoding if we just switch file, or default to UTF-8
-      let encoding = "UTF-8";
+      // Check saved encoding for this file, fall back to current or UTF-8
+      const savedEnc = await getEncoding(path);
+      let encoding = savedEnc || "UTF-8";
       update((s) => {
-        encoding = s.currentEncoding || "UTF-8";
-        return { ...s, loading: true, currentFilePath: path, currentContent: "" };
+        return { ...s, loading: true, currentFilePath: path, currentContent: "", currentEncoding: encoding };
       });
       editorStore.setMode("preview");
       try {
@@ -154,6 +155,7 @@ function createVaultStore() {
         update((s) => ({ ...s, currentContent: content, loading: false }));
         lastSavedContent = content;
         lastSavedEncoding = encoding;
+        await setEncoding(path, encoding);
       } catch (e) {
         console.error("Failed to read note with encoding:", e);
         update((s) => ({ ...s, loading: false }));
