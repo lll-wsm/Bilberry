@@ -22,7 +22,22 @@
   const themeCompartment = new Compartment();
 
   function getThemeExt($theme: string): Extension {
-    return $theme === "dark" ? oneDark : [];
+    const baseTheme = $theme === "dark" ? oneDark : [];
+    const selectionTheme = EditorView.theme({
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
+        backgroundColor: "var(--bg-active) !important",
+      },
+      ".cm-cursor": {
+        borderLeftColor: "var(--text-normal)",
+      },
+      "&.cm-focused .cm-cursor": {
+        borderLeftColor: "var(--interactive-accent)",
+      },
+      ".cm-activeLine": {
+        backgroundColor: "rgba(128, 128, 128, 0.05)",
+      },
+    });
+    return [baseTheme, selectionTheme];
   }
 
   onMount(() => {

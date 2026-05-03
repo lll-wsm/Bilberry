@@ -2,20 +2,61 @@ export interface ThemeInfo {
   id: string;
   label: string;
   mode: "light" | "dark";
+  colors?: {
+    primary: string;
+    secondary: string;
+    text: string;
+    accent: string;
+  };
 }
 
 export const themes: ThemeInfo[] = [
-  { id: "ayu", label: "Ayu", mode: "light" },
-  { id: "ayu-mirage", label: "Ayu Mirage", mode: "dark" },
-  { id: "bear-default", label: "Bear Default", mode: "light" },
-  { id: "charcoal", label: "Charcoal", mode: "dark" },
-  { id: "cobalt", label: "Cobalt", mode: "dark" },
+  {
+    id: "ayu",
+    label: "Ayu",
+    mode: "light",
+    colors: { primary: "#fdfdfd", secondary: "#fafafa", text: "#1a1f29", accent: "#ff9940" },
+  },
+  {
+    id: "ayu-mirage",
+    label: "Ayu Mirage",
+    mode: "dark",
+    colors: { primary: "#1f2430", secondary: "#171b24", text: "#cbccc6", accent: "#ffcc66" },
+  },
+  {
+    id: "bear-default",
+    label: "Bear Default",
+    mode: "light",
+    colors: { primary: "#ffffff", secondary: "#f5f5f5", text: "#2c2c2c", accent: "#eb5757" },
+  },
+  {
+    id: "charcoal",
+    label: "Charcoal",
+    mode: "dark",
+    colors: { primary: "#1f2023", secondary: "#161719", text: "#eeeeee", accent: "#eb5757" },
+  },
+  {
+    id: "cobalt",
+    label: "Cobalt",
+    mode: "dark",
+    colors: { primary: "#051e33", secondary: "#011627", text: "#e0e0e0", accent: "#ff9d00" },
+  },
   { id: "contrast", label: "Contrast", mode: "light" },
   { id: "d-boring", label: "D-Boring", mode: "light" },
-  { id: "dark-graphite", label: "Dark Graphite", mode: "dark" },
+  {
+    id: "dark-graphite",
+    label: "Dark Graphite",
+    mode: "dark",
+    colors: { primary: "#1e1e1e", secondary: "#181818", text: "#d4d4d4", accent: "#eb5757" },
+  },
   { id: "default", label: "Default", mode: "light" },
   { id: "dieci", label: "Dieci", mode: "dark" },
-  { id: "dracula", label: "Dracula", mode: "dark" },
+  {
+    id: "dracula",
+    label: "Dracula",
+    mode: "dark",
+    colors: { primary: "#282a36", secondary: "#21222c", text: "#f8f8f2", accent: "#bd93f9" },
+  },
   { id: "duotone-heat", label: "Duotone Heat", mode: "light" },
   { id: "duotone-light", label: "Duotone Light", mode: "light" },
   { id: "gandalf", label: "Gandalf", mode: "light" },
@@ -25,13 +66,28 @@ export const themes: ThemeInfo[] = [
   { id: "lark", label: "Lark", mode: "light" },
   { id: "lark-bold-color", label: "Lark Bold Color", mode: "light" },
   { id: "lighthouse", label: "Lighthouse", mode: "dark" },
-  { id: "nord", label: "Nord", mode: "dark" },
+  {
+    id: "nord",
+    label: "Nord",
+    mode: "dark",
+    colors: { primary: "#2e3440", secondary: "#242933", text: "#d8dee9", accent: "#88c0d0" },
+  },
   { id: "olive-dunk", label: "Olive Dunk", mode: "light" },
   { id: "panic", label: "Panic", mode: "dark" },
   { id: "red-graphite", label: "Red Graphite", mode: "light" },
   { id: "smartblue", label: "Smart Blue", mode: "light" },
-  { id: "solarized-dark", label: "Solarized Dark", mode: "dark" },
-  { id: "solarized-light", label: "Solarized Light", mode: "light" },
+  {
+    id: "solarized-dark",
+    label: "Solarized Dark",
+    mode: "dark",
+    colors: { primary: "#002b36", secondary: "#073642", text: "#839496", accent: "#268bd2" },
+  },
+  {
+    id: "solarized-light",
+    label: "Solarized Light",
+    mode: "light",
+    colors: { primary: "#fdf6e3", secondary: "#eee8d5", text: "#657b83", accent: "#268bd2" },
+  },
   { id: "toothpaste", label: "Toothpaste", mode: "dark" },
   { id: "typo", label: "Typo", mode: "light" },
   { id: "v-green", label: "V-Green", mode: "light" },
@@ -111,15 +167,48 @@ function scopeThemeCss(css: string): string {
 }
 
 export async function applyTheme(themeId: string | null) {
-  // Remove previous theme
-  const prev = document.getElementById("bilberry-preview-theme");
-  if (prev) prev.remove();
+  // 1. Remove previous theme and global overrides
+  const prevStyle = document.getElementById("bilberry-preview-theme");
+  if (prevStyle) prevStyle.remove();
+
+  const prevGlobal = document.getElementById("bilberry-global-theme-override");
+  if (prevGlobal) prevGlobal.remove();
+
+  const themeInfo = themes.find((t) => t.id === themeId) || themes.find(t => t.id === 'default');
+  
+  if (!themeInfo) {
+    document.body.className = "light";
+    activeThemeId = null;
+    return;
+  }
+
+  // 2. Apply theme mode to body
+  document.body.className = themeInfo.mode;
+
+  // 3. Inject global variable overrides if color metadata exists
+  if (themeInfo.colors) {
+    const globalStyle = document.createElement("style");
+    globalStyle.id = "bilberry-global-theme-override";
+    globalStyle.textContent = `
+      :root, .dark {
+        --bg-primary: ${themeInfo.colors.primary};
+        --bg-secondary: ${themeInfo.colors.secondary};
+        --text-normal: ${themeInfo.colors.text};
+        --interactive-accent: ${themeInfo.colors.accent};
+        --border-divider: ${themeInfo.mode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"};
+        --header-bg: ${themeInfo.colors.secondary};
+        --header-text: ${themeInfo.colors.text};
+      }
+    `;
+    document.head.appendChild(globalStyle);
+  }
 
   if (!themeId || themeId === "default") {
     activeThemeId = null;
     return;
   }
 
+  // 4. Load and apply preview-scoped CSS
   const path = `./themes/${themeId}.css`;
   if (!themeModules[path]) {
     console.warn("Unknown theme:", themeId);

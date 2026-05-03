@@ -278,7 +278,8 @@
     justify-content: space-between;
     padding: var(--spacing-2) var(--spacing-4);
     border-bottom: 1px solid var(--border-divider);
-    background: var(--bg-secondary);
+    background: var(--header-bg);
+    color: var(--header-text);
   }
 
   .header-left {
