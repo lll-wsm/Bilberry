@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::fs;
+use std::process::Command;
 use encoding_rs::Encoding;
 
 #[tauri::command]
@@ -46,4 +47,29 @@ pub fn delete_note(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn rename_note(old_path: String, new_path: String) -> Result<(), String> {
     fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename file: {}", e))
+}
+
+#[tauri::command]
+pub fn reveal_in_finder(path: String) -> Result<(), String> {
+    Command::new("open")
+        .args(["-R", &path])
+        .output()
+        .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn copy_file(source: String, dest: String) -> Result<(), String> {
+    fs::copy(&source, &dest).map_err(|e| format!("Failed to copy file: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_directory(path: String) -> Result<(), String> {
+    fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
+}
+
+#[tauri::command]
+pub fn create_directory(path: String) -> Result<(), String> {
+    fs::create_dir_all(&path).map_err(|e| format!("Failed to create directory: {}", e))
 }

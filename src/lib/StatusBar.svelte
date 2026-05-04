@@ -89,12 +89,13 @@
     justify-content: space-between;
     padding: 0 var(--spacing-3);
     border-top: 1px solid var(--border-divider);
-    background: var(--interactive-accent);
-    color: white;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
     font-size: 11px;
     user-select: none;
     height: 24px;
     z-index: 100;
+    -webkit-app-region: no-drag;
   }
 
   .left, .right {
@@ -119,13 +120,13 @@
   .mode {
     padding: 2px 6px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-hover);
     font-weight: 500;
   }
 
   .encoding-select {
     background: transparent;
-    color: white;
+    color: var(--text-muted);
     border: none;
     font-size: 11px;
     outline: none;
@@ -141,7 +142,7 @@
 
   .encoding-select:hover, .encoding-select:focus {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
     border-radius: 3px;
   }
 
@@ -149,25 +150,24 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: white;
+    color: var(--text-muted);
     padding: 2px;
     border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.85;
-    transition: opacity 0.1s ease, background 0.1s ease;
+    transition: color 0.1s ease, background 0.1s ease;
   }
 
   .icon-btn:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-normal);
+    background: var(--bg-hover);
   }
 
   .divider {
     width: 1px;
     height: 12px;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--border-divider);
     margin: 0 2px;
   }
 </style>

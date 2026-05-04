@@ -1,16 +1,155 @@
 <script lang="ts">
   import { vaultStore } from "../stores/vault";
+  import { contextMenu } from "../stores/contextMenu";
+  import { fileClipboard } from "../stores/fileClipboard";
+  import { get } from "svelte/store";
+  import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./vault/FileExplorer.svelte";
   import SearchPanel from "./vault/SearchPanel.svelte";
   import { FolderOpen, Search } from "lucide-svelte";
 
   type Tab = "files" | "search";
   let activeTab: Tab = $state("files");
+
+  const vaultPath = $derived($vaultStore.vault?.path ?? "");
+
+  function revealInFinder(path: string) {
+    invoke("reveal_in_finder", { path });
+  }
+
+  function copyRelativePath(path: string) {
+    const vp = $vaultStore.vault?.path;
+    if (!vp) return;
+    const relPath = path.startsWith(vp + "/")
+      ? path.slice(vp.length + 1)
+      : path;
+    navigator.clipboard.writeText(relPath);
+  }
+
+  function copyAbsolutePath(path: string) {
+    navigator.clipboard.writeText(path);
+  }
+
+  async function handleNewFile(dirPath: string) {
+    const name = prompt("文件名:");
+    if (!name) return;
+    const path = dirPath + "/" + name;
+    try {
+      await invoke("create_note", { path });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("新建文件失败: " + e);
+    }
+  }
+
+  async function handleNewDirectory(dirPath: string) {
+    const name = prompt("目录名:");
+    if (!name) return;
+    const path = dirPath + "/" + name;
+    try {
+      await invoke("create_directory", { path });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("新建目录失败: " + e);
+    }
+  }
+
+  let renamingRoot = $state(false);
+  let rootRenameValue = $state("");
+
+  function startRootRename() {
+    rootRenameValue = vaultPath.split("/").pop() || "";
+    renamingRoot = true;
+  }
+
+  async function commitRootRename() {
+    renamingRoot = false;
+    const oldName = vaultPath.split("/").pop() || "";
+    if (!rootRenameValue || rootRenameValue === oldName) return;
+    const parent = vaultPath.slice(0, vaultPath.lastIndexOf("/"));
+    const newPath = parent + "/" + rootRenameValue;
+    try {
+      await invoke("rename_note", { oldPath: vaultPath, newPath });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("重命名失败: " + e);
+    }
+  }
+
+  function focusRenameInput(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
+  async function handleDelete(path: string) {
+    if (!confirm(`确定删除 "${path.split("/").pop()}" 吗？`)) return;
+    try {
+      await invoke("delete_directory", { path });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("删除失败: " + e);
+    }
+  }
+
+  async function handlePaste(dirPath: string) {
+    const entry = get(fileClipboard);
+    if (!entry) return;
+    const oldName = entry.path.split("/").pop() || "";
+    const destPath = dirPath + "/" + oldName;
+    try {
+      if (entry.action === "cut") {
+        await invoke("rename_note", { oldPath: entry.path, newPath: destPath });
+      } else {
+        await invoke("copy_file", { source: entry.path, dest: destPath });
+      }
+      fileClipboard.clear();
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("粘贴失败: " + e);
+    }
+  }
+
+  function onEmptyContextMenu(e: MouseEvent) {
+    if (!vaultPath) return;
+    const clipEntry = get(fileClipboard);
+
+    contextMenu.show(e, [
+      { label: "刷新", action: () => vaultStore.refreshFileTree() },
+      { separator: true, label: "", action: () => {} },
+      { label: "新建文件", action: () => handleNewFile(vaultPath) },
+      { label: "新建目录", action: () => handleNewDirectory(vaultPath) },
+      { separator: true, label: "", action: () => {} },
+      { label: "在访达中打开", action: () => revealInFinder(vaultPath) },
+      { separator: true, label: "", action: () => {} },
+      { label: "剪切", action: () => fileClipboard.cut(vaultPath) },
+      { label: "复制", action: () => fileClipboard.copy(vaultPath) },
+      { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(vaultPath) },
+      { label: "重命名", action: () => { contextMenu.hide(); startRootRename(); } },
+      { label: "删除", action: () => handleDelete(vaultPath) },
+      { separator: true, label: "", action: () => {} },
+      { label: "复制相对路径", action: () => copyRelativePath(vaultPath) },
+      { label: "复制绝对路径", action: () => copyAbsolutePath(vaultPath) },
+    ]);
+  }
 </script>
 
 <div class="sidebar">
+  <div class="drag-region"></div>
   <div class="sidebar-header">
-    <span class="vault-name">{$vaultStore.vault?.name ?? ""}</span>
+    {#if renamingRoot}
+      <input
+        class="vault-rename-input"
+        bind:value={rootRenameValue}
+        use:focusRenameInput
+        onkeydown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commitRootRename(); }
+          else if (e.key === "Escape") { e.preventDefault(); renamingRoot = false; }
+        }}
+        onblur={commitRootRename}
+      />
+    {:else}
+      <span class="vault-name">{$vaultStore.vault?.name ?? ""}</span>
+    {/if}
     <div class="tabs">
       <button
         class="tab"
@@ -26,7 +165,11 @@
       ><Search size={16} /></button>
     </div>
   </div>
-  <div class="sidebar-content">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="sidebar-content"
+    oncontextmenu={onEmptyContextMenu}
+  >
     {#if activeTab === "files"}
       <FileExplorer entries={$vaultStore.fileTree} />
     {:else if activeTab === "search"}
@@ -42,12 +185,27 @@
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary);
+    padding-top: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drag-region {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    -webkit-app-region: drag;
+    pointer-events: none;
+    z-index: 10;
   }
 
   .sidebar-header {
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid var(--border-divider);
+    -webkit-app-region: drag;
   }
 
   .vault-name {
@@ -55,6 +213,19 @@
     font-size: 13px;
     padding: var(--spacing-2) var(--spacing-3) var(--spacing-1);
     color: var(--text-normal);
+  }
+
+  .vault-rename-input {
+    margin: var(--spacing-2) var(--spacing-3) var(--spacing-1);
+    padding: 2px 6px;
+    border: 1px solid var(--interactive-accent);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-normal);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
   }
 
   .tabs {
@@ -74,6 +245,7 @@
     color: var(--text-muted);
     border-bottom: 2px solid transparent;
     transition: all 0.1s ease;
+    -webkit-app-region: no-drag;
   }
 
   .tab:hover {
@@ -89,5 +261,7 @@
   .sidebar-content {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-app-region: no-drag;
   }
 </style>

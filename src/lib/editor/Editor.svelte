@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, Compartment } from "@codemirror/state";
+  import { openSearchPanel } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { createExtensions } from "./cm-extensions";
   import { theme } from "../../stores/theme";
   import { settingsStore } from "../../stores/settings";
+  import { pendingNavRange, triggerFindCount } from "../../stores/editor";
   import type { Extension } from "@codemirror/state";
 
   let { content = "", readonly = false, onContentChange }: {
@@ -35,6 +37,13 @@
       },
       ".cm-activeLine": {
         backgroundColor: "rgba(128, 128, 128, 0.05)",
+      },
+      ".cm-gutters": {
+        backgroundColor: "var(--bg-secondary) !important",
+        borderRight: "1px solid var(--border-divider)",
+      },
+      ".cm-lineNumbers .cm-gutterElement": {
+        color: "var(--text-muted) !important",
       },
     });
     return [baseTheme, selectionTheme];
@@ -81,19 +90,41 @@
     };
   });
 
-  // Sync external content (file switching) to editor
-  // Read content first to ensure it's tracked as a dependency
-  // before checking view availability
+  // Sync external content, apply cursor navigation, and handle find requests.
+  // Uses untrack() when writing back to stores to avoid reactive re-triggers.
   $effect(() => {
     const text = content;
+    const navRange = $pendingNavRange;
+    const findTick = $triggerFindCount;
     if (!view || isDestroyed) return;
     const current = view.state.doc.toString();
+
+    // Sync content
     if (text !== current) {
       isSyncing = true;
       view.dispatch({
         changes: { from: 0, to: current.length, insert: text },
       });
       isSyncing = false;
+    }
+
+    // Navigate cursor and select match range after content is synced
+    if (navRange !== null) {
+      const anchor = Math.min(navRange.anchor, view.state.doc.length);
+      const head = Math.min(navRange.head, view.state.doc.length);
+      view.dispatch({
+        selection: { anchor, head },
+        scrollIntoView: true,
+      });
+      view.focus();
+      untrack(() => pendingNavRange.set(null));
+    }
+
+    // Open find panel on request (focus editor first so the input gets focus)
+    if (findTick > 0) {
+      view.focus();
+      openSearchPanel(view);
+      untrack(() => triggerFindCount.set(0));
     }
   });
 </script>

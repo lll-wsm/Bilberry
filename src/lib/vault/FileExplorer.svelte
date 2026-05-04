@@ -1,11 +1,28 @@
 <script lang="ts">
   import { vaultStore, type FileEntry } from "../../stores/vault";
+  import { contextMenu } from "../../stores/contextMenu";
+  import { fileClipboard } from "../../stores/fileClipboard";
+  import { writable, get } from "svelte/store";
+  import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./FileExplorer.svelte";
   import { ChevronRight, ChevronDown, Folder, File, FileText } from "lucide-svelte";
+
+  const editingPath = writable<string | null>(null);
 
   let { entries = [] }: { entries: FileEntry[] } = $props();
 
   let expandedDirs = $state(new Set<string>());
+
+  function focusInput(node: HTMLInputElement) {
+    node.focus();
+    const val = node.value;
+    const dot = val.lastIndexOf(".");
+    if (dot > 0 && !node.dataset.dir) {
+      node.setSelectionRange(0, dot);
+    } else {
+      node.select();
+    }
+  }
 
   function toggleDir(path: string) {
     if (expandedDirs.has(path)) {
@@ -13,7 +30,6 @@
     } else {
       expandedDirs.add(path);
     }
-    // Trigger reactivity by reassigning
     expandedDirs = new Set(expandedDirs);
   }
 
@@ -25,9 +41,143 @@
     }
   }
 
-  function fileIcon(name: string) {
-    if (name.endsWith(".md")) return FileText;
-    return File;
+  async function commitRename(path: string, newName: string) {
+    const oldName = path.split("/").pop() || "";
+    if (newName && newName !== oldName) {
+      const parent = path.slice(0, path.lastIndexOf("/"));
+      const newPath = parent + "/" + newName;
+      try {
+        await invoke("rename_note", { oldPath: path, newPath });
+        await vaultStore.refreshFileTree();
+        vaultStore.handleFileRename(path, newPath);
+      } catch (e) {
+        alert("重命名失败: " + e);
+      }
+    }
+  }
+
+  function startRename(path: string) {
+    contextMenu.hide();
+    editingPath.set(path);
+  }
+
+  async function handleDelete(path: string, isDir: boolean) {
+    if (!confirm(`确定删除${isDir ? "目录" : "文件"} "${path.split("/").pop()}" 吗？`)) return;
+    try {
+      if (isDir) {
+        await invoke("delete_directory", { path });
+      } else {
+        await invoke("delete_note", { path });
+      }
+      await vaultStore.refreshFileTree();
+      // Close tab if open
+      vaultStore.closeTab(path);
+    } catch (e) {
+      alert("删除失败: " + e);
+    }
+  }
+
+  async function handleNewFile(dirPath: string) {
+    const name = prompt("文件名:");
+    if (!name) return;
+    const path = dirPath + "/" + name;
+    try {
+      await invoke("create_note", { path });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("新建文件失败: " + e);
+    }
+  }
+
+  async function handleNewDirectory(dirPath: string) {
+    const name = prompt("目录名:");
+    if (!name) return;
+    const path = dirPath + "/" + name;
+    try {
+      await invoke("create_directory", { path });
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("新建目录失败: " + e);
+    }
+  }
+
+  function revealInFinder(path: string) {
+    invoke("reveal_in_finder", { path });
+  }
+
+  function copyRelativePath(path: string) {
+    const vaultPath = $vaultStore.vault?.path;
+    if (!vaultPath) return;
+    const relPath = path.startsWith(vaultPath + "/")
+      ? path.slice(vaultPath.length + 1)
+      : path;
+    navigator.clipboard.writeText(relPath);
+  }
+
+  function copyAbsolutePath(path: string) {
+    navigator.clipboard.writeText(path);
+  }
+
+  async function handlePaste(dirPath: string) {
+    const entry = get(fileClipboard);
+    if (!entry) return;
+
+    const oldName = entry.path.split("/").pop() || "";
+    const destPath = dirPath + "/" + oldName;
+    try {
+      if (entry.action === "cut") {
+        await invoke("rename_note", { oldPath: entry.path, newPath: destPath });
+      } else {
+        await invoke("copy_file", { source: entry.path, dest: destPath });
+      }
+      fileClipboard.clear();
+      await vaultStore.refreshFileTree();
+    } catch (e) {
+      alert("粘贴失败: " + e);
+    }
+  }
+
+  function refreshFileTree() {
+    vaultStore.refreshFileTree();
+  }
+
+  function onFileContextMenu(e: MouseEvent, entry: FileEntry) {
+    const vaultPath = $vaultStore.vault?.path;
+    contextMenu.show(e, [
+      { label: "刷新", action: () => refreshFileTree() },
+      { separator: true, label: "", action: () => {} },
+      { label: "在访达中打开", action: () => revealInFinder(entry.path) },
+      { separator: true, label: "", action: () => {} },
+      { label: "剪切", action: () => fileClipboard.cut(entry.path) },
+      { label: "复制", action: () => fileClipboard.copy(entry.path) },
+      { label: "删除", action: () => handleDelete(entry.path, entry.is_dir) },
+      { label: "重命名", action: () => startRename(entry.path) },
+      { separator: true, label: "", action: () => {} },
+      { label: "复制相对路径", action: () => copyRelativePath(entry.path) },
+      { label: "复制绝对路径", action: () => copyAbsolutePath(entry.path) },
+    ]);
+  }
+
+  function onDirContextMenu(e: MouseEvent, entry: FileEntry) {
+    const clipEntry = get(fileClipboard);
+
+    contextMenu.show(e, [
+      { label: "刷新", action: () => refreshFileTree() },
+      { separator: true, label: "", action: () => {} },
+      { label: "新建文件", action: () => handleNewFile(entry.path) },
+      { label: "新建目录", action: () => handleNewDirectory(entry.path) },
+      { separator: true, label: "", action: () => {} },
+      { label: "在访达中打开", action: () => revealInFinder(entry.path) },
+      { separator: true, label: "", action: () => {} },
+      { label: "剪切", action: () => fileClipboard.cut(entry.path) },
+      { label: "复制", action: () => fileClipboard.copy(entry.path) },
+      { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
+      { label: "删除", action: () => handleDelete(entry.path, true) },
+      { label: "重命名", action: () => startRename(entry.path) },
+      { separator: true, label: "", action: () => {} },
+      { label: "复制相对路径", action: () => copyRelativePath(entry.path) },
+      { label: "复制绝对路径", action: () => copyAbsolutePath(entry.path) },
+    ]);
   }
 </script>
 
@@ -41,6 +191,13 @@
       class:md={!entry.is_dir && entry.name.endsWith(".md")}
       class:other={!entry.is_dir && !entry.name.endsWith(".md")}
       onclick={() => handleClick(entry)}
+      oncontextmenu={(e) => {
+        if (entry.is_dir) {
+          onDirContextMenu(e, entry);
+        } else {
+          onFileContextMenu(e, entry);
+        }
+      }}
     >
       {#if entry.is_dir}
         <span class="chevron">
@@ -64,7 +221,31 @@
           {/if}
         {/if}
       </span>
-      <span class="name">{entry.name}</span>
+      {#if $editingPath === entry.path}
+        <input
+          class="rename-input"
+          value={entry.name}
+          data-dir={entry.is_dir || undefined}
+          use:focusInput
+          onkeydown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const input = e.target as HTMLInputElement;
+              commitRename(entry.path, input.value);
+              editingPath.set(null);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              editingPath.set(null);
+            }
+          }}
+          onblur={(e) => {
+            // Small delay so button click can register before clearing
+            setTimeout(() => editingPath.set(null), 150);
+          }}
+        />
+      {:else}
+        <span class="name">{entry.name}</span>
+      {/if}
     </button>
     {#if entry.is_dir && expandedDirs.has(entry.path) && entry.children && entry.children.length > 0}
       <div class="children">
@@ -148,10 +329,25 @@
   }
 
   .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: break-word;
+    word-break: break-all;
     margin-left: 2px;
+    min-width: 0;
+  }
+
+  .rename-input {
+    flex: 1;
+    min-width: 0;
+    margin-left: 2px;
+    padding: 0 4px;
+    border: 1px solid var(--interactive-accent);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-normal);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    height: 22px;
   }
 
   .children {

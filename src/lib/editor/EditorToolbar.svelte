@@ -1,6 +1,7 @@
 <script lang="ts">
   import { editorStore, type EditorMode } from "../../stores/editor";
   import ExportModal from "../export/ExportModal.svelte";
+  import { PanelRight } from "lucide-svelte";
 
   const modes: { value: EditorMode; label: string; icon: string }[] = [
     { value: "source", label: "源码", icon: "📝" },
@@ -10,74 +11,147 @@
   ];
 
   let showExport = $state(false);
+  let expanded = $state(false);
 </script>
 
-<div class="toolbar">
-  <div class="mode-group">
-    {#each modes as m}
-      <button
-        class="mode-btn"
-        class:active={$editorStore.mode === m.value}
-        onclick={() => editorStore.setMode(m.value)}
-        title={m.label}
-      >
-        <span class="icon">{m.icon}</span>
+<div class="right-toolbar" class:expanded>
+  {#if expanded}
+    <div class="toolbar-panel">
+      {#each modes as m}
+        <button
+          class="tool-btn"
+          class:active={$editorStore.mode === m.value}
+          onclick={() => editorStore.setMode(m.value)}
+          title={m.label}
+        >
+          <span class="btn-icon">{m.icon}</span>
+        </button>
+      {/each}
+      <div class="separator"></div>
+      <button class="tool-btn" onclick={() => (showExport = true)} title="导出">
+        <span class="btn-icon">📤</span>
       </button>
-    {/each}
-  </div>
-  <div class="spacer"></div>
-  <button class="mode-btn" onclick={() => (showExport = true)} title="导出">
-    <span class="icon">📤</span>
-  </button>
+      <div class="separator"></div>
+      <button
+        class="tool-btn collapse-btn"
+        onclick={() => (expanded = false)}
+        title="收起"
+      >
+        <PanelRight size={16} />
+      </button>
+    </div>
+  {:else}
+    <button class="expand-btn" onclick={() => (expanded = true)} title="展开工具栏">
+      <PanelRight size={16} />
+    </button>
+  {/if}
 </div>
 
 <ExportModal show={showExport} onclose={() => (showExport = false)} />
 
 <style>
-  .toolbar {
+  .right-toolbar {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 50;
     display: flex;
     align-items: center;
-    padding: 4px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-toolbar);
-    gap: 8px;
   }
 
-  .mode-group {
+  .right-toolbar.expanded {
+    opacity: 0.75;
+    transition: opacity 0.2s;
+  }
+
+  .right-toolbar.expanded:hover {
+    opacity: 1;
+  }
+
+  .toolbar-panel {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 2px;
-    background: var(--bg);
-    border-radius: 6px;
-    padding: 2px;
-    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-divider);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    padding: 6px 4px;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
   }
 
-  .spacer {
-    flex: 1;
+  .separator {
+    width: 20px;
+    height: 1px;
+    background: var(--border-divider);
+    margin: 3px 0;
   }
 
-  .mode-btn {
-    padding: 4px 8px;
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     border: none;
     background: transparent;
     cursor: pointer;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 6px;
     color: var(--text-muted);
+    font-size: 16px;
     transition: all 0.15s;
   }
 
-  .mode-btn:hover {
+  .tool-btn:hover {
     background: var(--bg-hover);
-    color: var(--text);
+    color: var(--text-normal);
   }
 
-  .mode-btn.active {
+  .tool-btn.active {
     background: var(--bg-hover);
-    color: var(--text);
+    color: var(--text-normal);
   }
 
-  .icon {
+  .tool-btn.active .btn-icon {
+    filter: none;
+  }
+
+  .collapse-btn {
+    color: var(--text-muted);
+    opacity: 0.5;
     font-size: 14px;
+  }
+
+  .collapse-btn:hover {
+    opacity: 1;
+    color: var(--text-normal);
+  }
+
+  .expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 48px;
+    border: 1px solid var(--border-divider);
+    border-right: none;
+    background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+    cursor: pointer;
+    border-radius: 6px 0 0 6px;
+    color: var(--text-muted);
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.15s;
+    backdrop-filter: blur(4px);
+  }
+
+  .expand-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-normal);
+  }
+
+  .btn-icon {
+    line-height: 1;
   }
 </style>

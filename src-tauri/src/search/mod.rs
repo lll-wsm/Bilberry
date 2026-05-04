@@ -1,10 +1,6 @@
 use std::path::Path;
-use std::sync::Mutex;
 use serde::Serialize;
-use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
-use tantivy::schema::*;
-use tantivy::{doc, Index, IndexWriter, ReloadPolicy, TantivyDocument};
+use encoding_rs::Encoding;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
@@ -12,159 +8,150 @@ pub struct SearchResult {
     pub title: String,
     pub snippet: String,
     pub score: f32,
+    pub match_start: usize,
+    pub match_end: usize,
 }
 
 pub struct SearchIndex {
-    index: Index,
-    schema: Schema,
-    writer: Mutex<IndexWriter>,
-    vault_path: String,
+    entries: Vec<SearchEntry>,
+}
+
+struct SearchEntry {
+    path: String,
+    title: String,
+    content: String,
 }
 
 impl SearchIndex {
     pub fn new(vault_path: &str) -> Result<Self, String> {
-        let index_dir = Path::new(vault_path).join(".bilberry/search");
-        std::fs::create_dir_all(&index_dir)
-            .map_err(|e| format!("Failed to create search index dir: {}", e))?;
-
-        let mut schema_builder = Schema::builder();
-        schema_builder.add_text_field("path", STRING | STORED);
-        schema_builder.add_text_field("title", TEXT | STORED);
-        schema_builder.add_text_field("body", TEXT | STORED);
-        let schema = schema_builder.build();
-
-        let index = if index_dir.join("meta.json").exists() {
-            Index::open_in_dir(&index_dir)
-                .map_err(|e| format!("Failed to open search index: {}", e))?
-        } else {
-            Index::create_in_dir(&index_dir, schema.clone())
-                .map_err(|e| format!("Failed to create search index: {}", e))?
-        };
-
-        let writer = index
-            .writer(50_000_000)
-            .map_err(|e| format!("Failed to create index writer: {}", e))?;
-
-        Ok(SearchIndex {
-            index,
-            schema,
-            writer: Mutex::new(writer),
-            vault_path: vault_path.to_string(),
-        })
-    }
-
-    /// Index all .md files in the vault
-    pub fn index_all(&self) -> Result<(), String> {
-        let path_field = self.schema.get_field("path").map_err(|e| e.to_string())?;
-        let title_field = self.schema.get_field("title").map_err(|e| e.to_string())?;
-        let body_field = self.schema.get_field("body").map_err(|e| e.to_string())?;
-
-        let files = collect_md_files(&self.vault_path);
-        let mut writer = self.writer.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let files = collect_md_files(vault_path);
+        let mut entries = Vec::with_capacity(files.len());
 
         for file_path in &files {
-            let content = std::fs::read_to_string(file_path)
-                .map_err(|e| format!("Failed to read {}: {}", file_path, e))?;
-
+            let content = read_file_safe(file_path);
             let title = Path::new(file_path)
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Extract first heading as a better title if available
             let display_title = content
                 .lines()
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").to_string())
                 .unwrap_or(title);
 
-            writer
-                .add_document(doc!(
-                    path_field => file_path.as_str(),
-                    title_field => display_title,
-                    body_field => content.as_str(),
-                ))
-                .map_err(|e| format!("Failed to add document: {}", e))?;
+            entries.push(SearchEntry {
+                path: file_path.clone(),
+                title: display_title,
+                content,
+            });
         }
 
-        writer
-            .commit()
-            .map_err(|e| format!("Failed to commit index: {}", e))?;
+        Ok(SearchIndex { entries })
+    }
 
+    /// Re-index all files (rebuild from scratch)
+    pub fn index_all(&self) -> Result<(), String> {
+        // Entries are already populated in new(), nothing to do
         Ok(())
     }
 
-    /// Search the index for a query string
+    /// Search for query string across all indexed content
     pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
-        let path_field = self.schema.get_field("path").map_err(|e| e.to_string())?;
-        let title_field = self.schema.get_field("title").map_err(|e| e.to_string())?;
-        let body_field = self.schema.get_field("body").map_err(|e| e.to_string())?;
+        let query_lower = query_str.to_lowercase();
+        let mut results: Vec<SearchResult> = Vec::new();
 
-        let reader = self
-            .index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()
-            .map_err(|e| format!("Failed to create reader: {}", e))?;
+        for entry in &self.entries {
+            let content_lower = entry.content.to_lowercase();
+            let title_lower = entry.title.to_lowercase();
 
-        let searcher = reader.searcher();
+            if !content_lower.contains(&query_lower) && !title_lower.contains(&query_lower) {
+                continue;
+            }
 
-        let query_parser = QueryParser::for_index(&self.index, vec![title_field, body_field]);
-        let query = query_parser
-            .parse_query(query_str)
-            .map_err(|e| format!("Failed to parse query: {}", e))?;
+            let snippet = generate_snippet(&entry.content, query_str, 120);
 
-        let top_docs = searcher
-            .search(&query, &TopDocs::with_limit(limit))
-            .map_err(|e| format!("Search failed: {}", e))?;
-
-        let mut results = Vec::new();
-        for (score, doc_address) in top_docs {
-            let doc: TantivyDocument = searcher
-                .doc::<TantivyDocument>(doc_address)
-                .map_err(|e| format!("Failed to get doc: {}", e))?;
-
-            let path = doc
-                .get_first(path_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let title = doc
-                .get_first(title_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let body = doc
-                .get_first(body_field)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            // Generate a snippet from the body around the matched text
-            let snippet = generate_snippet(&body, query_str, 120);
+            // Calculate character offset of the first match for cursor navigation
+            let match_start = content_lower.find(&query_lower)
+                .map(|pos| content_lower[..pos].chars().count())
+                .unwrap_or(0);
+            let query_chars = query_str.chars().count();
+            let match_end = match_start + query_chars;
 
             results.push(SearchResult {
-                path,
-                title,
+                path: entry.path.clone(),
+                title: entry.title.clone(),
                 snippet,
-                score,
+                score: 0.0,
+                match_start,
+                match_end,
             });
+
+            if results.len() >= limit {
+                break;
+            }
         }
 
         Ok(results)
     }
 }
 
+/// Read file with encoding detection (try UTF-8 first, then GB18030, Big5, Shift_JIS)
+fn read_file_safe(path: &str) -> String {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(_) => return String::new(),
+    };
+
+    // Try UTF-8 first
+    if let Ok(s) = String::from_utf8(bytes.clone()) {
+        return s;
+    }
+
+    // Fall back to encoding_rs decoding
+    for enc_name in &["GB18030", "Big5", "Shift_JIS", "UTF-16LE", "Windows-1252"] {
+        if let Some(enc) = Encoding::for_label(enc_name.as_bytes()) {
+            let (result, _, had_errors) = enc.decode(&bytes);
+            if !had_errors {
+                return result.into_owned();
+            }
+        }
+    }
+
+    // Last resort: UTF-8 with replacement
+    let (result, _, _) = encoding_rs::UTF_8.decode(&bytes);
+    result.into_owned()
+}
+
 /// Generate a snippet with context around the first match
+/// Uses character indices to avoid panicking on multi-byte characters
 fn generate_snippet(body: &str, query: &str, context_chars: usize) -> String {
     let lower_body = body.to_lowercase();
     let lower_query = query.to_lowercase();
 
     if let Some(pos) = lower_body.find(&lower_query) {
-        let start = pos.saturating_sub(context_chars / 2);
-        let end = (pos + query.len() + context_chars / 2).min(body.len());
-        let snippet = &body[start..end];
-        if start > 0 {
+        // Convert byte position to character position (important for multi-byte text)
+        let char_pos = lower_body[..pos].chars().count();
+        let query_chars = query.chars().count();
+
+        let char_indices: Vec<(usize, usize)> = body.char_indices()
+            .map(|(i, c)| (i, c.len_utf8()))
+            .collect();
+
+        let total_chars = char_indices.len();
+
+        let start_char = char_pos.saturating_sub(context_chars / 2);
+        let start_byte = char_indices.get(start_char).map(|&(i, _)| i).unwrap_or(0);
+
+        let end_char = (char_pos + query_chars + context_chars / 2).min(total_chars);
+        let end_byte = if end_char >= total_chars {
+            body.len()
+        } else {
+            char_indices.get(end_char).map(|&(i, _)| i).unwrap_or(body.len())
+        };
+
+        let snippet = &body[start_byte..end_byte];
+        if start_char > 0 {
             format!("...{}...", snippet)
         } else {
             format!("{}...", snippet)
@@ -184,7 +171,6 @@ fn collect_md_files(path: &str) -> Vec<String> {
     for entry in dir.flatten() {
         let entry_path = entry.path();
         if entry_path.is_dir() {
-            // Skip .bilberry directory
             if entry_path
                 .file_name()
                 .map(|n| n == ".bilberry")
@@ -200,4 +186,3 @@ fn collect_md_files(path: &str) -> Vec<String> {
 
     files
 }
-

@@ -10,7 +10,9 @@
   import StatusBar from "./StatusBar.svelte";
   import SettingsModal from "./settings/SettingsModal.svelte";
   import { toggle, theme } from "../stores/theme";
-  import { PanelLeftClose, PanelLeft, X } from "lucide-svelte";
+  import { X } from "lucide-svelte";
+  import TabBar from "./editor/TabBar.svelte";
+  import ContextMenu from "./ui/ContextMenu.svelte";
 
   let sidebarOpen = $state(true);
   let recentDirs = $state<string[]>([]);
@@ -109,25 +111,12 @@
   </div>
 {:else}
   <div class="app-root">
-    <div class="layout">
+        <div class="layout">
       {#if sidebarOpen}
         <Sidebar />
       {/if}
       <main class="main-content">
-        <div class="editor-header">
-          <div class="header-left">
-            <button class="icon-btn" onclick={() => sidebarOpen = !sidebarOpen} title="Toggle Sidebar">
-              {#if sidebarOpen}
-                <PanelLeftClose size={16} />
-              {:else}
-                <PanelLeft size={16} />
-              {/if}
-            </button>
-            {#if $vaultStore.currentFilePath}
-              <span class="current-file">{$vaultStore.currentFilePath}</span>
-            {/if}
-          </div>
-        </div>
+        <TabBar {sidebarOpen} onToggleSidebar={() => sidebarOpen = !sidebarOpen} />
         {#if $vaultStore.currentFilePath}
           <EditorPanel
             content={$vaultStore.currentContent}
@@ -142,6 +131,7 @@
     </div>
     <StatusBar onToggleTheme={toggle} onOpenSettings={() => showSettings = true} />
     <SettingsModal show={showSettings} onclose={() => showSettings = false} />
+    <ContextMenu />
   </div>
 {/if}
 
@@ -155,6 +145,8 @@
     gap: 16px;
     background: var(--bg-primary);
     color: var(--text-normal);
+    padding-top: 28px;
+    -webkit-app-region: drag;
   }
 
   .welcome h1 {
@@ -170,6 +162,7 @@
     display: flex;
     gap: 12px;
     margin-top: 24px;
+    -webkit-app-region: no-drag;
   }
 
   .btn {
@@ -191,6 +184,7 @@
     margin-top: 32px;
     width: 360px;
     max-width: 80vw;
+    -webkit-app-region: no-drag;
   }
 
   .recent-label {
@@ -270,48 +264,6 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-  }
-
-  .editor-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-2) var(--spacing-4);
-    border-bottom: 1px solid var(--border-divider);
-    background: var(--header-bg);
-    color: var(--header-text);
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-  }
-
-  .current-file {
-    font-size: 13px;
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .icon-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    padding: var(--spacing-1);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.1s ease, color 0.1s ease;
-  }
-
-  .icon-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-normal);
   }
 
   .empty-state {

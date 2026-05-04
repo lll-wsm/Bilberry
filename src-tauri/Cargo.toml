@@ -22,5 +22,4 @@ notify = { version = "7", features = ["macos_kqueue"] }
 pulldown-cmark = "0.11"
 chrono = "0.4"
 regex = "1"
-tantivy = "0.22"
 encoding_rs = "0.8.35"

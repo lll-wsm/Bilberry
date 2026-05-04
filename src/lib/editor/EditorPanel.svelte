@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { editorStore } from "../../stores/editor";
+  import { editorStore, triggerFindCount } from "../../stores/editor";
+  import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
   import Editor from "./Editor.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
   import Preview from "../preview/Preview.svelte";
@@ -8,11 +9,40 @@
     content?: string;
     onContentChange?: (text: string) => void;
   } = $props();
+
+  function triggerFind() {
+    triggerFindCount.update(n => n + 1);
+  }
+
+  function onWorkspaceContextMenu(e: MouseEvent) {
+    const items: ContextMenuItem[] = [
+      { label: "剪切", action: () => document.execCommand("cut") },
+      { label: "复制", action: () => document.execCommand("copy") },
+      { label: "删除", action: () => document.execCommand("delete") },
+      { label: "粘贴", action: () => {
+        navigator.clipboard.readText().then(text => {
+          if (text && onContentChange) {
+            document.execCommand("insertText", false, text);
+          }
+        }).catch(() => {
+          document.execCommand("paste");
+        });
+      }},
+    ];
+
+    if ($editorStore.mode !== "preview") {
+      items.push({ separator: true, label: "", action: () => {} });
+      items.push({ label: "搜索", action: () => triggerFind() });
+    }
+
+    contextMenu.show(e, items);
+  }
 </script>
 
 <div class="editor-panel">
   <EditorToolbar />
-  <div class="workspace" class:split={$editorStore.mode === "split"}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="workspace" class:split={$editorStore.mode === "split"} oncontextmenu={onWorkspaceContextMenu}>
     {#if $editorStore.mode === "preview"}
       <Preview source={content} />
     {:else if $editorStore.mode === "live"}
@@ -37,6 +67,7 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--bg-primary);
+    position: relative;
   }
 
   .workspace {

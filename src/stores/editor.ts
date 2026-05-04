@@ -1,5 +1,11 @@
 import { writable, derived } from "svelte/store";
 
+/// Position range in the current document to select (anchor → head)
+export const pendingNavRange = writable<{anchor: number; head: number} | null>(null);
+
+/// Increment to trigger CodeMirror's find panel in the active editor
+export const triggerFindCount = writable(0);
+
 export type EditorMode = "split" | "preview" | "source" | "live";
 
 interface EditorState {

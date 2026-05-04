@@ -26,6 +26,10 @@ pub fn run() {
             commands::search_notes,
             commands::save_data_file,
             commands::load_data_file,
+            commands::reveal_in_finder,
+            commands::copy_file,
+            commands::delete_directory,
+            commands::create_directory,
             export::export_html,
         ])
         .run(tauri::generate_context!())
