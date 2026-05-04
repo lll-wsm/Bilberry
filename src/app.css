@@ -3,6 +3,7 @@
   --bg-secondary: #f3f4f6;
   --bg-hover: #e5e7eb;
   --bg-active: #d1d5db;
+  --selection-bg: rgba(37, 99, 235, 0.5);
   --text-normal: #1f2937;
   --text-muted: #6b7280;
   --border-divider: #d1d5db;
@@ -23,6 +24,7 @@
   --bg-secondary: #252526;
   --bg-hover: #2d2d30;
   --bg-active: #37373d;
+  --selection-bg: rgba(0, 122, 204, 0.7);
   --text-normal: #cccccc;
   --text-muted: #858585;
   --border-divider: #3c3c3c;

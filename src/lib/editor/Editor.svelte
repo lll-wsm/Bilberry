@@ -27,7 +27,7 @@
     const baseTheme = $theme === "dark" ? oneDark : [];
     const selectionTheme = EditorView.theme({
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-        backgroundColor: "var(--bg-active) !important",
+        backgroundColor: "var(--selection-bg) !important",
       },
       ".cm-cursor": {
         borderLeftColor: "var(--text-normal)",
@@ -114,7 +114,7 @@
       const head = Math.min(navRange.head, view.state.doc.length);
       view.dispatch({
         selection: { anchor, head },
-        scrollIntoView: true,
+        effects: [EditorView.scrollIntoView(head, { y: "center" })],
       });
       view.focus();
       untrack(() => pendingNavRange.set(null));

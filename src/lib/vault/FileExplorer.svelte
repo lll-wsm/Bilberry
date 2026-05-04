@@ -198,6 +198,7 @@
           onFileContextMenu(e, entry);
         }
       }}
+      title={entry.name}
     >
       {#if entry.is_dir}
         <span class="chevron">

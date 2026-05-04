@@ -72,6 +72,23 @@
       { label: "复制绝对路径", action: () => copyAbsolutePath(path) },
     ]);
   }
+
+  function onWheel(e: WheelEvent) {
+    const container = e.currentTarget as HTMLElement;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      container.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }
+
+  $effect(() => {
+    if (activePath) {
+      const activeEl = document.querySelector(".tab.active");
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      }
+    }
+  });
 </script>
 
 <div class="tab-bar" onmousedown={onDragRegionMouseDown}>
@@ -89,7 +106,7 @@
     </button>
   </div>
 
-  <div class="tabs-scroll">
+  <div class="tabs-scroll" onwheel={onWheel}>
     {#each tabs as tab (tab.path)}
       <button
         class="tab"
@@ -153,18 +170,13 @@
     display: flex;
     align-items: center;
     overflow-x: auto;
-    scrollbar-width: thin;
     flex: 1;
     align-self: stretch;
+    scrollbar-width: none; /* Firefox */
   }
 
   .tabs-scroll::-webkit-scrollbar {
-    height: 3px;
-  }
-
-  .tabs-scroll::-webkit-scrollbar-thumb {
-    background: var(--border-divider);
-    border-radius: 2px;
+    display: none; /* Chrome, Safari, Edge */
   }
 
   .tab {
