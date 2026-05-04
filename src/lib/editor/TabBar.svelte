@@ -16,12 +16,6 @@
   const tabs = $derived($vaultStore.openTabs);
   const activePath = $derived($vaultStore.currentFilePath);
 
-  function onDragRegionMouseDown(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("button, input, a, [role='button']")) return;
-    e.preventDefault();
-    getCurrentWindow().startDragging();
-  }
-
   function onTabClick(path: string) {
     vaultStore.switchTab(path);
   }
@@ -48,7 +42,7 @@
     navigator.clipboard.writeText(path);
   }
 
-  function onTabContextMenu(e: MouseEvent, path: string) {
+  async function onTabContextMenu(e: MouseEvent, path: string) {
     const idx = tabs.findIndex(t => t.path === path);
     contextMenu.show(e, [
       { label: "关闭", action: () => vaultStore.closeTab(path) },
@@ -91,7 +85,7 @@
   });
 </script>
 
-<div class="tab-bar" onmousedown={onDragRegionMouseDown}>
+<div class="tab-bar" data-tauri-drag-region>
   <div class="leading-fixed">
     <button
       class="sidebar-toggle"
