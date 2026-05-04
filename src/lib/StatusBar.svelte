@@ -1,16 +1,21 @@
 <script lang="ts">
   import { vaultStore } from "../stores/vault";
   import { editorStore } from "../stores/editor";
-  import { theme } from "../stores/theme";
+  import { settingsStore } from "../stores/settings";
   import { Sun, Moon, Settings } from "lucide-svelte";
 
   let {
-    onToggleTheme,
     onOpenSettings,
   }: {
     onToggleTheme?: () => void;
     onOpenSettings?: () => void;
   } = $props();
+
+  let isLightTheme = $derived($settingsStore.previewTheme !== "dracula");
+
+  function togglePreviewTheme() {
+    settingsStore.updateSetting("previewTheme", isLightTheme ? "dracula" : "bear-default");
+  }
 
   let wordCount = $derived(
     $vaultStore.currentContent
@@ -43,11 +48,11 @@
 {#if $vaultStore.vault}
   <div class="statusbar">
     <span class="left">
-      <button class="icon-btn" onclick={onToggleTheme} title="切换主题">
-        {#if $theme === "dark"}
-          <Sun size={13} />
-        {:else}
+      <button class="icon-btn" onclick={togglePreviewTheme} title="切换主题">
+        {#if isLightTheme}
           <Moon size={13} />
+        {:else}
+          <Sun size={13} />
         {/if}
       </button>
       <button class="icon-btn" onclick={onOpenSettings} title="设置">

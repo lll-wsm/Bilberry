@@ -4,6 +4,7 @@
   import { fileClipboard } from "../stores/fileClipboard";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import FileExplorer from "./vault/FileExplorer.svelte";
   import SearchPanel from "./vault/SearchPanel.svelte";
   import { FolderOpen, Search } from "lucide-svelte";
@@ -12,6 +13,12 @@
   let activeTab: Tab = $state("files");
 
   const vaultPath = $derived($vaultStore.vault?.path ?? "");
+
+  function onDragRegionMouseDown(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest("button, input, a, [role='button'], .sidebar-content")) return;
+    e.preventDefault();
+    getCurrentWindow().startDragging();
+  }
 
   function revealInFinder(path: string) {
     invoke("reveal_in_finder", { path });
@@ -133,8 +140,7 @@
   }
 </script>
 
-<div class="sidebar">
-  <div class="drag-region"></div>
+<div class="sidebar" onmousedown={onDragRegionMouseDown}>
   <div class="sidebar-header">
     {#if renamingRoot}
       <input
@@ -168,13 +174,17 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="sidebar-content"
+    class:hidden-files={activeTab !== "files"}
     oncontextmenu={onEmptyContextMenu}
   >
-    {#if activeTab === "files"}
-      <FileExplorer entries={$vaultStore.fileTree} />
-    {:else if activeTab === "search"}
-      <SearchPanel />
-    {/if}
+    <FileExplorer entries={$vaultStore.fileTree} />
+  </div>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="sidebar-content"
+    class:hidden-search={activeTab !== "search"}
+  >
+    <SearchPanel />
   </div>
 </div>
 
@@ -190,22 +200,10 @@
     overflow: hidden;
   }
 
-  .drag-region {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    -webkit-app-region: drag;
-    pointer-events: none;
-    z-index: 10;
-  }
-
   .sidebar-header {
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid var(--border-divider);
-    -webkit-app-region: drag;
   }
 
   .vault-name {
@@ -245,7 +243,6 @@
     color: var(--text-muted);
     border-bottom: 2px solid transparent;
     transition: all 0.1s ease;
-    -webkit-app-region: no-drag;
   }
 
   .tab:hover {
@@ -262,6 +259,10 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    -webkit-app-region: no-drag;
+  }
+
+  .hidden-files,
+  .hidden-search {
+    display: none;
   }
 </style>

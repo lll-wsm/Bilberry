@@ -329,8 +329,9 @@
   }
 
   .name {
-    overflow-wrap: break-word;
-    word-break: break-all;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     margin-left: 2px;
     min-width: 0;
   }

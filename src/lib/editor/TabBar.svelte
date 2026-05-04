@@ -2,6 +2,7 @@
   import { vaultStore } from "../../stores/vault";
   import { contextMenu } from "../../stores/contextMenu";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { X, PanelLeftClose, PanelLeft } from "lucide-svelte";
 
   let {
@@ -14,6 +15,12 @@
 
   const tabs = $derived($vaultStore.openTabs);
   const activePath = $derived($vaultStore.currentFilePath);
+
+  function onDragRegionMouseDown(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest("button, input, a, [role='button']")) return;
+    e.preventDefault();
+    getCurrentWindow().startDragging();
+  }
 
   function onTabClick(path: string) {
     vaultStore.switchTab(path);
@@ -67,11 +74,7 @@
   }
 </script>
 
-<div class="tab-bar">
-  <!-- Drag region overlay — pointer-events: none so clicks pass through
-       to tabs/buttons below; Tauri registers this OS-level drag region -->
-  <div class="drag-region"></div>
-
+<div class="tab-bar" onmousedown={onDragRegionMouseDown}>
   <div class="leading-fixed">
     <button
       class="sidebar-toggle"
@@ -117,21 +120,7 @@
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-divider);
     flex-shrink: 0;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .drag-region {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    /* Tauri registers the drag region at OS level; pointer-events: none
-       passes webview clicks through to interactive elements below */
-    -webkit-app-region: drag;
-    pointer-events: none;
-    z-index: 10;
+    padding-top: 28px;
   }
 
   .leading-fixed {
@@ -139,9 +128,6 @@
     align-items: center;
     background: var(--bg-secondary);
     padding-right: 4px;
-    position: relative;
-    z-index: 1;
-    padding-top: 28px;
   }
 
   .sidebar-toggle {
@@ -169,9 +155,6 @@
     overflow-x: auto;
     scrollbar-width: thin;
     flex: 1;
-    position: relative;
-    z-index: 1;
-    padding-top: 28px;
     align-self: stretch;
   }
 

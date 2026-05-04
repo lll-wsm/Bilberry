@@ -9,7 +9,7 @@
   import EditorPanel from "./editor/EditorPanel.svelte";
   import StatusBar from "./StatusBar.svelte";
   import SettingsModal from "./settings/SettingsModal.svelte";
-  import { toggle, theme } from "../stores/theme";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { X } from "lucide-svelte";
   import TabBar from "./editor/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
@@ -85,10 +85,16 @@
   }
 
   let showWelcome = $derived(!$vaultStore.vault);
+
+  function onWelcomeDrag(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest("button, input, a, [role='button']")) return;
+    e.preventDefault();
+    getCurrentWindow().startDragging();
+  }
 </script>
 
 {#if showWelcome}
-  <div class="welcome">
+  <div class="welcome" onmousedown={onWelcomeDrag}>
     <h1>Bilberry</h1>
     <p class="subtitle">Markdown 笔记编辑器</p>
     <div class="actions">
@@ -129,7 +135,7 @@
         {/if}
       </main>
     </div>
-    <StatusBar onToggleTheme={toggle} onOpenSettings={() => showSettings = true} />
+    <StatusBar onOpenSettings={() => showSettings = true} />
     <SettingsModal show={showSettings} onclose={() => showSettings = false} />
     <ContextMenu />
   </div>
@@ -146,7 +152,6 @@
     background: var(--bg-primary);
     color: var(--text-normal);
     padding-top: 28px;
-    -webkit-app-region: drag;
   }
 
   .welcome h1 {
@@ -162,7 +167,6 @@
     display: flex;
     gap: 12px;
     margin-top: 24px;
-    -webkit-app-region: no-drag;
   }
 
   .btn {
@@ -184,7 +188,6 @@
     margin-top: 32px;
     width: 360px;
     max-width: 80vw;
-    -webkit-app-region: no-drag;
   }
 
   .recent-label {

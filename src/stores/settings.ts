@@ -20,7 +20,7 @@ const defaultSettings: Settings = {
   autoSave: true,
   autoSaveDelay: 1000,
   sidebarWidth: 240,
-  previewTheme: "default",
+  previewTheme: "bear-default",
 };
 
 function createSettingsStore() {
