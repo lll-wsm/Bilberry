@@ -2,8 +2,10 @@ mod data_commands;
 mod knowledge_commands;
 mod notes_commands;
 mod vault_commands;
+mod recent_commands;
 
 pub use data_commands::*;
 pub use knowledge_commands::*;
 pub use notes_commands::*;
 pub use vault_commands::*;
+pub use recent_commands::*;

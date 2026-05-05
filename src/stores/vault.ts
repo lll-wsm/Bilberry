@@ -2,6 +2,7 @@ import { writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { editorStore } from "./editor";
 import { getEncoding, setEncoding } from "./fileEncodings";
+import { addToRecent } from "./vaultHistory";
 
 export interface FileEntry {
   path: string;
@@ -107,6 +108,7 @@ function createVaultStore() {
           fileTree,
           loading: false,
         }));
+        addToRecent(path, "vault");
         // Build search index in background
         try {
           await invoke("build_search_index", { vaultPath: path });
@@ -165,6 +167,7 @@ function createVaultStore() {
       if (isAlreadyOpen) {
         // Just switch to the existing tab
         this.switchTab(path);
+        addToRecent(path, "file");
         return;
       }
 
@@ -192,6 +195,7 @@ function createVaultStore() {
             t.path === path ? { ...t, content, encoding } : t
           ),
         }));
+        addToRecent(path, "file");
       } catch (e) {
         console.error("Failed to read note:", e);
         update((s) => {

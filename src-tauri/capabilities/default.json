@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Permission set for Bilberry",
-  "windows": ["main"],
+  "windows": ["*"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

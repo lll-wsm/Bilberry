@@ -3,13 +3,14 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { vaultStore } from "../stores/vault";
   import { settingsStore } from "../stores/settings";
-  import { loadHistory, addToHistory, removeFromHistory } from "../stores/vaultHistory";
+  import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
   import { applyTheme } from "./preview/themes";
   import Sidebar from "./Sidebar.svelte";
   import EditorPanel from "./editor/EditorPanel.svelte";
   import StatusBar from "./StatusBar.svelte";
   import SettingsModal from "./settings/SettingsModal.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { X } from "lucide-svelte";
   import TabBar from "./editor/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
@@ -17,10 +18,50 @@
   let sidebarOpen = $state(true);
   let recentDirs = $state<string[]>([]);
   let showSettings = $state(false);
+  let unlisteners: UnlistenFn[] = [];
 
   onMount(() => {
     loadHistory().then((h) => recentDirs = h);
+
+    // Listen for native menu events from Rust
+    listen("menu-show-settings", () => {
+      showSettings = true;
+    }).then((unlisten) => unlisteners.push(unlisten));
+
+    listen("menu-open-vault", () => {
+      handleOpenVault();
+    }).then((unlisten) => unlisteners.push(unlisten));
+
+    listen<{ path: string; kind: string }>("menu-open-recent", (event) => {
+      const { path, kind } = event.payload;
+      if (kind === "vault") {
+        handleOpenRecent(path);
+        addToRecent(path, "vault");
+      } else {
+        handleOpenRecentFile(path);
+      }
+    }).then((unlisten) => unlisteners.push(unlisten));
+
+    listen("menu-close-window", () => {
+      getCurrentWindow().close();
+    }).then((unlisten) => unlisteners.push(unlisten));
+
+    return () => {
+      unlisteners.forEach((u) => u());
+    };
   });
+
+  async function handleOpenRecentFile(path: string) {
+    // Open the parent directory as vault, then open the file
+    const parentDir = path.substring(0, path.lastIndexOf("/"));
+    try {
+      await vaultStore.openVault(parentDir);
+      await vaultStore.openNote(path);
+      addToRecent(path, "file");
+    } catch {
+      alert("无法打开文件: " + path);
+    }
+  }
 
   $effect(() => {
     applyTheme($settingsStore.previewTheme);
