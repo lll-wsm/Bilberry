@@ -20,6 +20,12 @@ A desktop Markdown note editor built with **Tauri 2**, **Svelte 5**, and **Rust*
 
 ## Quick Start
 
+## Debian or Ubuntu
+`sudo apt install libglib2.0-dev`
+`sudo apt install libgtk-3-dev`
+`sudo apt install libjavascriptcoregtk-4.1-dev`
+`sudo apt install -y libsoup-3.0-dev libwebkit2gtk-4.1-dev`
+
 ```bash
 # Install dependencies
 npm install
