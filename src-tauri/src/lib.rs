@@ -120,14 +120,15 @@ pub fn run() {
                 }
                 "new_window" => {
                     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
-                    tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
+                    let mut builder = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
                         .title("Bilberry")
                         .inner_size(1200.0, 800.0)
-                        .min_inner_size(800.0, 600.0)
-                        .title_bar_style(TitleBarStyle::Overlay)
-                        .hidden_title(true)
-                        .build()
-                        .ok();
+                        .min_inner_size(800.0, 600.0);
+                    #[cfg(target_os = "macos")]
+                    {
+                        builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
+                    }
+                    builder.build().ok();
                 }
                 "close_window" => {
                     app.emit("menu-close-window", ()).ok();
