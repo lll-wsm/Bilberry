@@ -1,7 +1,9 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
-use tauri::{Emitter, TitleBarStyle};
+use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri::TitleBarStyle;
 
 static WINDOW_COUNT: AtomicU32 = AtomicU32::new(1);
 
@@ -120,6 +122,7 @@ pub fn run() {
                 }
                 "new_window" => {
                     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
+                    #[allow(unused_mut)]
                     let mut builder = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
                         .title("Bilberry")
                         .inner_size(1200.0, 800.0)
