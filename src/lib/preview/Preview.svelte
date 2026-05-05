@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { tick } from "svelte";
   import { settingsStore } from "../../stores/settings";
-  import { renderMarkdown, type RenderResult } from "./markdown";
+  import { theme } from "../../stores/theme";
+  import { renderMarkdown, renderMermaidBlocks, type RenderResult } from "./markdown";
+  import { themes } from "./themes";
 
   let { source = "" }: { source?: string } = $props();
 
@@ -19,32 +21,29 @@
     }
   });
 
-  onMount(() => {
-    applyMermaid();
-  });
-
+  // Render mermaid diagrams after HTML is in the DOM
   $effect(() => {
-    // Re-run mermaid when content changes
-    if (result?.mermaidBlocks && result.mermaidBlocks.length > 0) {
-      applyMermaid();
-    }
-  });
-
-  async function applyMermaid() {
     if (!result?.mermaidBlocks.length) return;
+    const previewThemeId = $settingsStore.previewTheme;
+    const previewTheme = themes.find((entry) => entry.id === previewThemeId);
+    const dark = previewTheme ? previewTheme.mode === "dark" : $theme === "dark";
 
-    // Wait for DOM update
-    await tick();
-    // We need to wait for the next microtask
-    await new Promise((r) => setTimeout(r, 50));
-
-    try {
-      const mermaid = await import("mermaid");
-      mermaid.default.init(undefined, document.querySelectorAll(".mermaid-container"));
-    } catch (e) {
-      console.error("Mermaid render error:", e);
-    }
-  }
+    let cancelled = false;
+    (async () => {
+      await tick();
+      try {
+        const svgs = await renderMermaidBlocks(result.mermaidBlocks, dark);
+        if (cancelled) return;
+        const containers = container?.querySelectorAll(".mermaid-container");
+        containers?.forEach((el, i) => {
+          if (svgs[i]) el.innerHTML = svgs[i];
+        });
+      } catch (e) {
+        console.error("Mermaid render error:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  });
 
   let html = $derived(result?.html ?? "");
 </script>
@@ -95,5 +94,38 @@
     height: 100%;
     color: var(--text-muted);
     font-size: 14px;
+  }
+
+  /* KaTeX error styling */
+  :global(.katex-error) {
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+  }
+
+  /* Mermaid container styling */
+  :global(.mermaid-container) {
+    text-align: center;
+    margin: 16px 0;
+    padding: 12px;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.03);
+    overflow-x: auto;
+    min-height: 40px;
+  }
+
+  :global(.mermaid-container svg) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  :global(.mermaid-error) {
+    color: #e74c3c;
+    font-size: 12px;
+    padding: 8px;
   }
 </style>

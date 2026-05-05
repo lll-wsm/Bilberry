@@ -2,6 +2,7 @@
   import { vaultStore, type FileEntry } from "../../stores/vault";
   import { contextMenu } from "../../stores/contextMenu";
   import { fileClipboard } from "../../stores/fileClipboard";
+  import { fileTreePending } from "../../stores/fileTreePending";
   import { writable, get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./FileExplorer.svelte";
@@ -9,9 +10,13 @@
 
   const editingPath = writable<string | null>(null);
 
-  let { entries = [] }: { entries: FileEntry[] } = $props();
+  let { entries = [], depth = 0 }: { entries: FileEntry[]; depth?: number } = $props();
 
   let expandedDirs = $state(new Set<string>());
+
+  // VS Code-style inline creation — shared state from store
+  let pendingValue = $state("");
+  let localPending: { parentPath: string; type: "file" | "directory" } | null = $state.raw(null);
 
   function focusInput(node: HTMLInputElement) {
     node.focus();
@@ -22,6 +27,11 @@
     } else {
       node.select();
     }
+  }
+
+  function focusPendingInput(node: HTMLInputElement) {
+    node.focus();
+    node.select();
   }
 
   function toggleDir(path: string) {
@@ -70,36 +80,73 @@
         await invoke("delete_note", { path });
       }
       await vaultStore.refreshFileTree();
-      // Close tab if open
       vaultStore.closeTab(path);
     } catch (e) {
       alert("删除失败: " + e);
     }
   }
 
-  async function handleNewFile(dirPath: string) {
-    const name = prompt("文件名:");
-    if (!name) return;
-    const path = dirPath + "/" + name;
-    try {
-      await invoke("create_note", { path });
-      await vaultStore.refreshFileTree();
-    } catch (e) {
-      alert("新建文件失败: " + e);
+  function startNewFile(dirPath: string) {
+    contextMenu.hide();
+    localPending = { parentPath: dirPath, type: "file" };
+    pendingValue = "";
+    if (!expandedDirs.has(dirPath)) {
+      expandedDirs.add(dirPath);
+      expandedDirs = new Set(expandedDirs);
     }
   }
 
-  async function handleNewDirectory(dirPath: string) {
-    const name = prompt("目录名:");
-    if (!name) return;
-    const path = dirPath + "/" + name;
-    try {
-      await invoke("create_directory", { path });
-      await vaultStore.refreshFileTree();
-    } catch (e) {
-      alert("新建目录失败: " + e);
+  function startNewDirectory(dirPath: string) {
+    contextMenu.hide();
+    localPending = { parentPath: dirPath, type: "directory" };
+    pendingValue = "";
+    if (!expandedDirs.has(dirPath)) {
+      expandedDirs.add(dirPath);
+      expandedDirs = new Set(expandedDirs);
     }
   }
+
+  async function commitPending() {
+    const name = pendingValue.trim();
+    const pending = localPending;
+    localPending = null;
+    pendingValue = "";
+    if (!name || !pending) return;
+
+    const path = pending.parentPath + "/" + name;
+    try {
+      if (pending.type === "file") {
+        await invoke("create_note", { path });
+      } else {
+        await invoke("create_directory", { path });
+      }
+      await vaultStore.refreshFileTree();
+      if (pending.type === "file" && name.endsWith(".md")) {
+        await vaultStore.openNote(path);
+      }
+    } catch (e) {
+      alert(`${pending.type === "file" ? "新建文件" : "新建目录"}失败: ${e}`);
+    }
+  }
+
+  function cancelPending() {
+    localPending = null;
+    pendingValue = "";
+  }
+
+  // Sync from global store (for sidebar root-level "new file/dir" triggers)
+  $effect(() => {
+    const pending = $fileTreePending;
+    if (pending && depth === 0) {
+      localPending = { parentPath: pending.parentPath, type: pending.type };
+      pendingValue = "";
+      if (!expandedDirs.has(pending.parentPath)) {
+        expandedDirs.add(pending.parentPath);
+        expandedDirs = new Set(expandedDirs);
+      }
+      fileTreePending.clear();
+    }
+  });
 
   function revealInFinder(path: string) {
     invoke("reveal_in_finder", { path });
@@ -142,7 +189,6 @@
   }
 
   function onFileContextMenu(e: MouseEvent, entry: FileEntry) {
-    const vaultPath = $vaultStore.vault?.path;
     contextMenu.show(e, [
       { label: "刷新", action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
@@ -164,8 +210,8 @@
     contextMenu.show(e, [
       { label: "刷新", action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
-      { label: "新建文件", action: () => handleNewFile(entry.path) },
-      { label: "新建目录", action: () => handleNewDirectory(entry.path) },
+      { label: "新建文件", action: () => startNewFile(entry.path) },
+      { label: "新建目录", action: () => startNewDirectory(entry.path) },
       { separator: true, label: "", action: () => {} },
       { label: "在访达中打开", action: () => revealInFinder(entry.path) },
       { separator: true, label: "", action: () => {} },
@@ -180,6 +226,38 @@
     ]);
   }
 </script>
+
+{#if depth === 0 && localPending}
+  {@const vaultPath = $vaultStore.vault?.path ?? ""}
+  {#if localPending.parentPath === vaultPath}
+    <div class="pending-entry">
+      <span class="chevron placeholder"></span>
+      <span class="icon">
+        {#if localPending.type === "file"}
+          <FileText size={14} />
+        {:else}
+          <Folder size={14} />
+        {/if}
+      </span>
+      <input
+        class="pending-input"
+        bind:value={pendingValue}
+        placeholder={localPending.type === "file" ? "文件名.md" : "目录名"}
+        use:focusPendingInput
+        onkeydown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitPending();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelPending();
+          }
+        }}
+        onblur={() => cancelPending()}
+      />
+    </div>
+  {/if}
+{/if}
 
 {#each entries as entry}
   <div class="file-entry">
@@ -240,7 +318,6 @@
             }
           }}
           onblur={(e) => {
-            // Small delay so button click can register before clearing
             setTimeout(() => editingPath.set(null), 150);
           }}
         />
@@ -248,9 +325,39 @@
         <span class="name">{entry.name}</span>
       {/if}
     </button>
-    {#if entry.is_dir && expandedDirs.has(entry.path) && entry.children && entry.children.length > 0}
+    {#if entry.is_dir && expandedDirs.has(entry.path)}
       <div class="children">
-        <FileExplorer entries={entry.children} />
+        {#if localPending && localPending.parentPath === entry.path}
+          <div class="pending-entry">
+            <span class="chevron placeholder"></span>
+            <span class="icon">
+              {#if localPending.type === "file"}
+                <FileText size={14} />
+              {:else}
+                <Folder size={14} />
+              {/if}
+            </span>
+            <input
+              class="pending-input"
+              bind:value={pendingValue}
+              placeholder={localPending.type === "file" ? "文件名.md" : "目录名"}
+              use:focusPendingInput
+              onkeydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitPending();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelPending();
+                }
+              }}
+              onblur={() => cancelPending()}
+            />
+          </div>
+        {/if}
+        {#if entry.children && entry.children.length > 0}
+          <FileExplorer entries={entry.children} depth={depth + 1} />
+        {/if}
       </div>
     {/if}
   </div>
@@ -350,6 +457,34 @@
     font-family: inherit;
     outline: none;
     height: 22px;
+  }
+
+  .pending-entry {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    padding-left: 4px;
+  }
+
+  .pending-input {
+    flex: 1;
+    min-width: 0;
+    margin-left: 2px;
+    padding: 0 4px;
+    border: 1px solid var(--interactive-accent);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-normal);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    height: 22px;
+  }
+
+  .pending-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
   }
 
   .children {

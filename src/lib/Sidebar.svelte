@@ -2,6 +2,7 @@
   import { vaultStore } from "../stores/vault";
   import { contextMenu } from "../stores/contextMenu";
   import { fileClipboard } from "../stores/fileClipboard";
+  import { fileTreePending } from "../stores/fileTreePending";
   import { get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -37,28 +38,12 @@
     navigator.clipboard.writeText(path);
   }
 
-  async function handleNewFile(dirPath: string) {
-    const name = prompt("文件名:");
-    if (!name) return;
-    const path = dirPath + "/" + name;
-    try {
-      await invoke("create_note", { path });
-      await vaultStore.refreshFileTree();
-    } catch (e) {
-      alert("新建文件失败: " + e);
-    }
+  function handleNewFile() {
+    fileTreePending.start(vaultPath, "file");
   }
 
-  async function handleNewDirectory(dirPath: string) {
-    const name = prompt("目录名:");
-    if (!name) return;
-    const path = dirPath + "/" + name;
-    try {
-      await invoke("create_directory", { path });
-      await vaultStore.refreshFileTree();
-    } catch (e) {
-      alert("新建目录失败: " + e);
-    }
+  function handleNewDirectory() {
+    fileTreePending.start(vaultPath, "directory");
   }
 
   let renamingRoot = $state(false);
@@ -123,8 +108,8 @@
     contextMenu.show(e, [
       { label: "刷新", action: () => vaultStore.refreshFileTree() },
       { separator: true, label: "", action: () => {} },
-      { label: "新建文件", action: () => handleNewFile(vaultPath) },
-      { label: "新建目录", action: () => handleNewDirectory(vaultPath) },
+      { label: "新建文件", action: () => handleNewFile() },
+      { label: "新建目录", action: () => handleNewDirectory() },
       { separator: true, label: "", action: () => {} },
       { label: "在访达中打开", action: () => revealInFinder(vaultPath) },
       { separator: true, label: "", action: () => {} },
