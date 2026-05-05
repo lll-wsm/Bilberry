@@ -26,7 +26,9 @@
 </script>
 
 {#if show}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="overlay" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2>设置</h2>
 

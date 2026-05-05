@@ -12,4 +12,14 @@ export default defineConfig({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          mermaid: ["mermaid"],
+        },
+      },
+    },
+  },
 });

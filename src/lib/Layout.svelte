@@ -156,6 +156,7 @@
 </script>
 
 {#if showWelcome}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="welcome" onmousedown={onWelcomeDrag}>
     <h1>Bilberry</h1>
     <p class="subtitle">Markdown 笔记编辑器</p>

@@ -129,6 +129,20 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(commands::SearchState(Mutex::new(None)))
+        .setup(|app| {
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            {
+                let args: Vec<String> = std::env::args().collect();
+                if args.len() > 1 {
+                    let path = &args[1];
+                    if path.ends_with(".md") || path.ends_with(".markdown") {
+                        let state = app.state::<AppState>();
+                        state.pending_files.lock().unwrap().push(path.clone());
+                    }
+                }
+            }
+            Ok(())
+        })
         .menu(|app| build_menu(app))
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
@@ -207,6 +221,7 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| match event {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         tauri::RunEvent::Opened { urls } => {
             let state = app_handle.state::<AppState>();
             let is_ready = state.frontend_ready.load(Ordering::SeqCst);

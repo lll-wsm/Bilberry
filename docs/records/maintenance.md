@@ -22,5 +22,13 @@
 ### 🖥️ 窗口交互优化 (Window Interaction Optimizations)
 - **双击标题栏切换最大化**：在标签栏（标题栏区域）添加了双击事件。双击可切换窗口的最大化与还原状态，符合 macOS 用户的操作习惯。
 
+### 🛠️ 代码质量与规范 (Code Quality & Standards)
+- **修复 A11y 编译警告**：修复了 Svelte 编译过程中产生的多项可访问性（a11y）警告。通过添加适当的属性或抑制不必要的静态元素交互警告，净化了构建日志，确保了代码的规范性。
+- **跨平台编译修复 (Debian/Linux)**：
+    - 修复了 Linux 环境下 `RunEvent::Opened` 变体不存在导致的编译错误（该事件仅限 macOS）。
+    - 增加了对 Linux/Windows 命令行参数的支持，确保通过“打开方式”启动时能正确加载文件。
+- **Vite 构建优化**：
+    - 调整了 `chunkSizeWarningLimit` 并实现了 `mermaid` 库的独立分包（Manual Chunks），消除了因依赖库过大导致的构建警告。
+
 ---
 *记录人：Gemini CLI Agent*

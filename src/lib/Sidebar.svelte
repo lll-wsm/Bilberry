@@ -125,6 +125,7 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="sidebar" onmousedown={onDragRegionMouseDown}>
   <div class="sidebar-header">
     {#if renamingRoot}
