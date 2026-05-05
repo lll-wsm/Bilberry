@@ -10,6 +10,7 @@
   import StatusBar from "./StatusBar.svelte";
   import SettingsModal from "./settings/SettingsModal.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { X } from "lucide-svelte";
   import TabBar from "./editor/TabBar.svelte";
@@ -23,30 +24,50 @@
   onMount(() => {
     loadHistory().then((h) => recentDirs = h);
 
-    // Listen for native menu events from Rust
-    listen("menu-show-settings", () => {
-      showSettings = true;
-    }).then((unlisten) => unlisteners.push(unlisten));
+    let disposed = false;
 
-    listen("menu-open-vault", () => {
-      handleOpenVault();
-    }).then((unlisten) => unlisteners.push(unlisten));
+    const registerListeners = async () => {
+      const listeners = await Promise.all([
+        listen("menu-show-settings", () => {
+          showSettings = true;
+        }),
+        listen("menu-open-vault", () => {
+          handleOpenVault();
+        }),
+        listen<{ path: string; kind: string }>("menu-open-recent", (event) => {
+          const { path, kind } = event.payload;
+          if (kind === "vault") {
+            handleOpenRecent(path);
+            addToRecent(path, "vault");
+          } else {
+            handleOpenRecentFile(path);
+          }
+        }),
+        listen("menu-close-window", () => {
+          getCurrentWindow().close();
+        }),
+        listen<string>("file-opened", (event) => {
+          handleOpenRecentFile(event.payload);
+        }),
+      ]);
 
-    listen<{ path: string; kind: string }>("menu-open-recent", (event) => {
-      const { path, kind } = event.payload;
-      if (kind === "vault") {
-        handleOpenRecent(path);
-        addToRecent(path, "vault");
-      } else {
-        handleOpenRecentFile(path);
+      if (disposed) {
+        listeners.forEach((unlisten) => unlisten());
+        return;
       }
-    }).then((unlisten) => unlisteners.push(unlisten));
 
-    listen("menu-close-window", () => {
-      getCurrentWindow().close();
-    }).then((unlisten) => unlisteners.push(unlisten));
+      unlisteners.push(...listeners);
+
+      // Start flushing buffered native file-open events only after listeners are active.
+      await invoke("notify_frontend_ready");
+    };
+
+    registerListeners().catch((error) => {
+      console.error("Failed to register native event listeners:", error);
+    });
 
     return () => {
+      disposed = true;
       unlisteners.forEach((u) => u());
     };
   });

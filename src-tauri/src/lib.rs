@@ -1,11 +1,26 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
+use tauri::{Emitter, Manager, State};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
-use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
 static WINDOW_COUNT: AtomicU32 = AtomicU32::new(1);
+
+struct AppState {
+    pending_files: Mutex<Vec<String>>,
+    frontend_ready: AtomicBool,
+}
+
+#[tauri::command]
+fn notify_frontend_ready(app: tauri::AppHandle, state: State<'_, AppState>) {
+    state.frontend_ready.store(true, Ordering::SeqCst);
+    let mut files = state.pending_files.lock().unwrap();
+    for file in files.iter() {
+        app.emit("file-opened", file).ok();
+    }
+    files.clear();
+}
 
 mod commands;
 mod export;
@@ -105,7 +120,11 @@ struct RecentPayload {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .manage(AppState {
+            pending_files: Mutex::new(Vec::new()),
+            frontend_ready: AtomicBool::new(false),
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
@@ -182,7 +201,27 @@ pub fn run() {
             commands::get_recent_list,
             commands::remove_from_recent,
             refresh_menu,
+            notify_frontend_ready,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::Opened { urls } => {
+            let state = app_handle.state::<AppState>();
+            let is_ready = state.frontend_ready.load(Ordering::SeqCst);
+            
+            for url in urls {
+                if let Ok(path) = url.to_file_path() {
+                    let p_str = path.to_string_lossy().to_string();
+                    if is_ready {
+                        app_handle.emit("file-opened", p_str).ok();
+                    } else {
+                        state.pending_files.lock().unwrap().push(p_str);
+                    }
+                }
+            }
+        }
+        _ => {}
+    });
 }

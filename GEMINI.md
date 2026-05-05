@@ -65,3 +65,6 @@ Bilberry is a modern, local-first Markdown note-taking application built with **
 - `tauri.conf.json`: Tauri application configuration.
 - `src/stores/vault.ts`: Heart of the frontend state logic.
 - `src-tauri/src/lib.rs`: Entry point for backend logic and state management.
+
+## Tauri & Svelte Gotchas
+- **Event Listener Race Conditions (Cold Start):** When handling OS-level events (like `RunEvent::Opened` for file associations in Tauri v2), the backend might emit events before the Svelte frontend has finished registering its listeners. To prevent event loss, the backend must buffer the events, and the frontend MUST `await Promise.all([listen(...)])` for all relevant events *before* invoking a readiness command (e.g., `notify_frontend_ready`) to flush the buffer. Synchronously invoking the command while listeners are still asynchronously attaching will result in lost events.
