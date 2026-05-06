@@ -8,6 +8,10 @@
 </div>
 
 <style>
+  :global(html), :global(body) {
+    background: transparent !important;
+  }
+
   :global(*) {
     margin: 0;
     padding: 0;
@@ -19,5 +23,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: var(--bg-primary);
+    border-radius: 10px;
+    border: 1px solid var(--border-divider);
   }
 </style>
