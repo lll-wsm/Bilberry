@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bilberry</title>
+    <script>
+      // Blocking: apply cached theme before any rendering to prevent flash
+      (function() {
+        var mode = localStorage.getItem("bilberry-preview-theme-mode");
+        if (mode === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

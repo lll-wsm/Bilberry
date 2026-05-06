@@ -3,7 +3,9 @@
   import { contextMenu } from "../../stores/contextMenu";
   import { fileClipboard } from "../../stores/fileClipboard";
   import { fileTreePending } from "../../stores/fileTreePending";
+  import { expandToPaths } from "../../stores/expandToPaths";
   import { writable, get } from "svelte/store";
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./FileExplorer.svelte";
   import { ChevronRight, ChevronDown, Folder, File, FileText } from "lucide-svelte";
@@ -23,6 +25,32 @@
         expandedDirs = new Set(expandedDirs);
       }
     }
+  });
+
+  // Expand to paths signalled from outside (e.g., session restore).
+  // Every recursive instance subscribes so that expansion cascades:
+  // root expands dir1 → mounts child → child expands dir2 → etc.
+  onMount(() => {
+    const unsub = expandToPaths.subscribe((req) => {
+      if (req.paths.length === 0) return;
+      const vaultPath = get(vaultStore).vault?.path;
+      if (!vaultPath) return;
+      let changed = false;
+      for (const filePath of req.paths) {
+        let dir = filePath.substring(0, filePath.lastIndexOf("/"));
+        while (dir && dir.startsWith(vaultPath)) {
+          if (!expandedDirs.has(dir)) {
+            expandedDirs.add(dir);
+            changed = true;
+          }
+          dir = dir.substring(0, dir.lastIndexOf("/"));
+        }
+      }
+      if (changed) {
+        expandedDirs = new Set(expandedDirs);
+      }
+    });
+    return unsub;
   });
 
   // VS Code-style inline creation — shared state from store

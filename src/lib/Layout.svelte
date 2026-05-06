@@ -4,7 +4,10 @@
   import { vaultStore } from "../stores/vault";
   import { settingsStore } from "../stores/settings";
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
-  import { applyTheme } from "./preview/themes";
+  import { applyTheme, initPreviewThemeSync } from "./preview/themes";
+
+// Apply the cached preview theme immediately to prevent flash
+initPreviewThemeSync();
   import Sidebar from "./Sidebar.svelte";
   import EditorPanel from "./editor/EditorPanel.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -46,6 +49,7 @@
           }
         }),
         listen("menu-close-window", () => {
+          vaultStore.closeVault();
           getCurrentWindow().close();
         }),
         listen<string>("file-opened", (event) => {
@@ -69,7 +73,10 @@
 
       unlisteners.push(...listeners);
 
-      // Start flushing buffered native file-open events only after listeners are active.
+      // Save session when the window is about to close (window button, Cmd+W, Cmd+Q)
+    getCurrentWindow().onCloseRequested(() => {
+      vaultStore.closeVault();
+    }).then((unlisten) => unlisteners.push(unlisten));
       await invoke("notify_frontend_ready");
     };
 

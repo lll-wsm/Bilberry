@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
+  import { vaultStore } from "../../stores/vault";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, type RenderResult } from "./markdown";
@@ -157,9 +158,52 @@
     const ratio = maxScroll > 0 ? container.scrollTop / maxScroll : 0;
     onScrollChange(ratio);
   }
+
+  async function handleLinkClick(e: MouseEvent) {
+    const link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
+    if (link) {
+      e.preventDefault();
+      const fileName = link.dataset.target;
+      if (!fileName) return;
+
+      const findFile = (entries: any[], targetPath: string): string | null => {
+        // Normalize target: remove .md if present, handle slashes
+        const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
+        
+        for (const entry of entries) {
+          // 1. Check if the entry is a file
+          if (!entry.is_dir) {
+            const entryPath = entry.path.toLowerCase();
+            const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
+            
+            // Match A: Full path ending match (e.g., "folder/file" matches ".../folder/file.md")
+            if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
+              return entry.path;
+            }
+            
+            // Match B: Just filename match (e.g., "file" matches "any/folder/file.md")
+            if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
+              return entry.path;
+            }
+          }
+          
+          // 2. Recursive search in directories
+          if (entry.children) {
+            const found = findFile(entry.children, targetPath);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const fullPath = findFile($vaultStore.fileTree, fileName);
+      if (fullPath) vaultStore.openNote(fullPath);
+    }
+  }
 </script>
 
-<div bind:this={container} class="preview" onscroll={handleScroll}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div bind:this={container} class="preview" onscroll={handleScroll} onclick={handleLinkClick}>
   {#if renderError}
     <div class="render-error">
       <strong>渲染错误:</strong> {renderError}
@@ -202,6 +246,18 @@
   :global(.markdown-body figcaption) {
     display: block;
     max-width: 100%;
+  }
+
+  :global(.wikilink) {
+    color: var(--interactive-accent);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--interactive-accent);
+    cursor: pointer;
+    transition: opacity 0.1s ease;
+  }
+
+  :global(.wikilink:hover) {
+    opacity: 0.8;
   }
 
   :global(.markdown-body ul),

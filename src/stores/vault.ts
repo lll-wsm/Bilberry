@@ -1,8 +1,10 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import { editorStore } from "./editor";
+import { editorStore, pendingNavRange } from "./editor";
 import { getEncoding, setEncoding } from "./fileEncodings";
 import { addToRecent } from "./vaultHistory";
+import { loadSession, saveSession, type SessionData } from "./session";
+import { expandToPaths } from "./expandToPaths";
 
 export interface FileEntry {
   path: string;
@@ -44,6 +46,7 @@ interface VaultState {
   currentContent: string;
   currentEncoding: string;
   openTabs: OpenTab[];
+  scrollPositions: Record<string, { anchor: number; head: number }>;
   searchResults: SearchResult[];
   searchQuery: string;
   searchReady: boolean;
@@ -57,6 +60,7 @@ const initialState: VaultState = {
   currentContent: "",
   currentEncoding: "UTF-8",
   openTabs: [],
+  scrollPositions: {},
   searchResults: [],
   searchQuery: "",
   searchReady: false,
@@ -85,6 +89,16 @@ function createVaultStore() {
   let lastSavedContent = "";
   let lastSavedEncoding = "UTF-8";
 
+  function persistSession(state: VaultState) {
+    if (!state.vault) return;
+    const data: SessionData = {
+      openTabs: state.openTabs.map(t => t.path),
+      activeTab: state.currentFilePath,
+      scrollPositions: state.scrollPositions,
+    };
+    saveSession(state.vault.path, data);
+  }
+
   function debouncedSave(path: string | null, content: string, encoding: string) {
     if (!path) return;
     lastSavedContent = content;
@@ -112,18 +126,45 @@ function createVaultStore() {
         };
       });
     },
-
     async openVault(path: string) {
       update((s) => ({ ...s, loading: true }));
       try {
         const vault = await invoke<Vault>("open_vault", { path });
         const fileTree = await invoke<FileEntry[]>("get_file_tree", { path });
+        const session = await loadSession(path);
+
         update(() => ({
           ...initialState,
           vault,
           fileTree,
           loading: false,
+          scrollPositions: session?.scrollPositions || {},
         }));
+
+        // Restore tabs
+        if (session && session.openTabs.length > 0) {
+          for (const tabPath of session.openTabs) {
+            await this.openNote(tabPath, false);
+          }
+          if (session.activeTab) {
+            this.switchTab(session.activeTab);
+            const pos = session.scrollPositions[session.activeTab];
+            if (pos) {
+              pendingNavRange.set(pos);
+            }
+          }
+          // Persist the restored session state so it's not lost if the app closes
+          let restoredSnapshot: VaultState | undefined;
+          const restoreUnsub = subscribe((s) => { restoredSnapshot = s; });
+          restoreUnsub();
+          if (restoredSnapshot) persistSession(restoredSnapshot);
+        }
+
+        // Expand file tree to reveal restored files
+        if (session && session.openTabs.length > 0) {
+          expandToPaths.reveal(session.openTabs);
+        }
+
         addToRecent(path, "vault");
         // Build search index in background
         try {
@@ -172,7 +213,7 @@ function createVaultStore() {
       update((s) => ({ ...s, fileTree, loading: false }));
     },
 
-    async openNote(path: string) {
+    async openNote(path: string, focus = true) {
       // Check if already open in a tab
       let isAlreadyOpen = false;
       update((s) => {
@@ -181,56 +222,75 @@ function createVaultStore() {
       });
 
       if (isAlreadyOpen) {
-        // Just switch to the existing tab
-        this.switchTab(path);
+        if (focus) {
+          this.switchTab(path);
+        }
         addToRecent(path, "file");
         return;
       }
 
-      // New file - add tab
+      // New file — add tab
       const savedEnc = await getEncoding(path);
       let encoding = savedEnc || "UTF-8";
       update((s) => {
-        return {
-          ...s,
+        // Only set currentFilePath when focusing (restore skips this)
+        const updateFields: Partial<VaultState> = {
           loading: true,
-          currentFilePath: path,
           currentContent: "",
           currentEncoding: encoding,
           openTabs: [...s.openTabs, { path, content: "", encoding }],
         };
+        if (focus) {
+          updateFields.currentFilePath = path;
+        }
+        return { ...s, ...updateFields };
       });
-      editorStore.syncModeForFile(isPreviewableTextPath(path));
+      if (focus) {
+        editorStore.syncModeForFile(isPreviewableTextPath(path));
+      }
       try {
         const content = isImagePath(path)
           ? ""
           : await invoke<string>("read_note", { path, encoding });
         update((s) => ({
           ...s,
-          currentContent: content,
+          currentContent: focus ? content : s.currentContent,
           loading: false,
           openTabs: s.openTabs.map(t =>
             t.path === path ? { ...t, content, encoding } : t
           ),
         }));
+        if (focus) {
+          editorStore.syncModeForFile(isPreviewableTextPath(path));
+        }
         addToRecent(path, "file");
+
+        // Persist session after opening a new tab
+        if (focus) {
+          update((s) => {
+            persistSession(s);
+            return s;
+          });
+        }
       } catch (e) {
         console.error("Failed to read note:", e);
         update((s) => {
-          // Remove the failed tab, revert to previous if needed
           const remaining = s.openTabs.filter(t => t.path !== path);
           if (remaining.length === 0) {
             return { ...s, loading: false, currentFilePath: null, currentContent: "", openTabs: [] };
           }
-          const last = remaining[remaining.length - 1];
-          return {
-            ...s,
-            loading: false,
-            currentFilePath: last.path,
-            currentContent: last.content,
-            currentEncoding: last.encoding,
-            openTabs: remaining,
-          };
+          if (focus) {
+            const last = remaining[remaining.length - 1];
+            return {
+              ...s,
+              loading: false,
+              currentFilePath: last.path,
+              currentContent: last.content,
+              currentEncoding: last.encoding,
+              openTabs: remaining,
+            };
+          }
+          return { ...s, loading: false, openTabs: remaining };
         });
         alert("读取笔记失败: " + e);
       }
@@ -249,56 +309,77 @@ function createVaultStore() {
         // Find target tab
         const target = updatedTabs.find(t => t.path === path);
         if (!target) return s;
-        return {
+        const newState = {
           ...s,
           currentFilePath: target.path,
           currentContent: target.content,
           currentEncoding: target.encoding,
           openTabs: updatedTabs,
         };
+
+        // Restore scroll position
+        const pos = s.scrollPositions[path];
+        if (pos) {
+          pendingNavRange.set(pos);
+        }
+
+        persistSession(newState);
+        return newState;
       });
     },
-
     closeTab(path: string) {
       update((s) => {
+        const filteredTabs = s.openTabs.filter(t => t.path !== path);
+        
         if (path === s.currentFilePath) {
-          // Save current content then close
-          const savedTabs = s.openTabs.map(t =>
-            t.path === s.currentFilePath
-              ? { ...t, content: s.currentContent, encoding: s.currentEncoding }
-              : t
-          ).filter(t => t.path !== path);
-
-          if (savedTabs.length === 0) {
+          if (filteredTabs.length === 0) {
             editorStore.reset();
-            return {
+            const newState = {
               ...s,
               currentFilePath: null,
               currentContent: "",
               currentEncoding: "UTF-8",
               openTabs: [],
             };
+            persistSession(newState);
+            return newState;
+          } else {
+            const currentIdx = s.openTabs.findIndex(t => t.path === path);
+            const newIdx = Math.min(currentIdx, filteredTabs.length - 1);
+            const next = filteredTabs[newIdx];
+            editorStore.syncModeForFile(isPreviewableTextPath(next.path));
+            const newState = {
+              ...s,
+              currentFilePath: next.path,
+              currentContent: next.content,
+              currentEncoding: next.encoding,
+              openTabs: filteredTabs,
+            };
+            persistSession(newState);
+            return newState;
           }
-
-          // Switch to adjacent tab (prefer the one to the left)
-          const currentIdx = s.openTabs.findIndex(t => t.path === path);
-          const newIdx = Math.min(currentIdx, savedTabs.length - 1);
-          const next = savedTabs[newIdx];
-          editorStore.syncModeForFile(isPreviewableTextPath(next.path));
-          return {
-            ...s,
-            currentFilePath: next.path,
-            currentContent: next.content,
-            currentEncoding: next.encoding,
-            openTabs: savedTabs,
-          };
         }
 
-        // Close a non-active tab
-        return {
+        const newState = {
           ...s,
-          openTabs: s.openTabs.filter(t => t.path !== path),
+          openTabs: filteredTabs,
         };
+        persistSession(newState);
+        return newState;
+      });
+    },
+
+    updateScrollPosition(path: string, pos: { anchor: number; head: number }) {
+      update((s) => {
+        const newState = {
+          ...s,
+          scrollPositions: {
+            ...s.scrollPositions,
+            [path]: pos
+          }
+        };
+        persistSession(newState);
+        return newState;
       });
     },
 
@@ -468,6 +549,13 @@ function createVaultStore() {
 
     closeVault() {
       if (saveTimer) clearTimeout(saveTimer);
+      // Persist session before clearing
+      let snapshot: VaultState | undefined;
+      const unsub = subscribe((s) => { snapshot = s; });
+      unsub();
+      if (snapshot?.vault) {
+        persistSession(snapshot);
+      }
       set(initialState);
     },
   };

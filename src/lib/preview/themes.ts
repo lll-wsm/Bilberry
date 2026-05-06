@@ -282,6 +282,27 @@ function resetGlobalColors() {
   if (prev) prev.remove();
 }
 
+const PREVIEW_THEME_KEY = "bilberry-preview-theme";
+const PREVIEW_THEME_MODE_KEY = "bilberry-preview-theme-mode";
+
+function cacheTheme(themeId: string | null, isDark: boolean) {
+  if (themeId) {
+    localStorage.setItem(PREVIEW_THEME_KEY, themeId);
+    localStorage.setItem(PREVIEW_THEME_MODE_KEY, isDark ? "dark" : "light");
+  } else {
+    localStorage.removeItem(PREVIEW_THEME_KEY);
+    localStorage.removeItem(PREVIEW_THEME_MODE_KEY);
+  }
+}
+
+/** Sync init — call before first render to prevent flash. */
+export function initPreviewThemeSync() {
+  const mode = localStorage.getItem(PREVIEW_THEME_MODE_KEY);
+  if (mode) {
+    document.documentElement.classList.toggle("dark", mode === "dark");
+  }
+}
+
 export async function applyTheme(themeId: string | null) {
   // Remove previous theme styles
   const prevStyle = document.getElementById("bilberry-preview-theme");
@@ -291,14 +312,15 @@ export async function applyTheme(themeId: string | null) {
 
   if (!themeId || themeId === "default" || !themeInfo) {
     resetGlobalColors();
-    // Reset body class to match the light/dark toggle
     activeThemeId = null;
+    cacheTheme(null, false);
     return;
   }
 
   // Set html class for dark/light mode CSS variables
   document.documentElement.classList.toggle("dark", themeInfo.mode === "dark");
   activeThemeId = themeId;
+  cacheTheme(themeId, themeInfo.mode === "dark");
 
   // Load the theme CSS
   const path = `./themes/${themeId}.css`;

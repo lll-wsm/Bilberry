@@ -8,6 +8,7 @@
   import { theme } from "../../stores/theme";
   import { settingsStore } from "../../stores/settings";
   import { pendingNavRange, triggerFindCount } from "../../stores/editor";
+  import { vaultStore } from "../../stores/vault";
   import type { Extension } from "@codemirror/state";
 
   let { content = "", readonly = false, onContentChange, onScrollChange, initialScrollRatio = null }: {
@@ -34,6 +35,7 @@
   }
 
   const themeCompartment = new Compartment();
+  const contentPath = $derived($vaultStore.currentFilePath);
 
   function getThemeExt($theme: string): Extension {
     const baseTheme = $theme === "dark" ? oneDark : [];
@@ -49,6 +51,9 @@
       },
       ".cm-activeLine": {
         backgroundColor: "rgba(128, 128, 128, 0.05)",
+      },
+      ".cm-activeLineGutter": {
+        backgroundColor: "rgba(128, 128, 128, 0.1)",
       },
       ".cm-gutters": {
         backgroundColor: "var(--bg-secondary) !important",
@@ -77,6 +82,10 @@
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isSyncing && onContentChange) {
             onContentChange(update.state.doc.toString());
+          }
+          if (update.selectionSet && !isSyncing && contentPath) {
+            const range = update.state.selection.main;
+            vaultStore.updateScrollPosition(contentPath, { anchor: range.anchor, head: range.head });
           }
         }),
       ],

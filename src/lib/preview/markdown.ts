@@ -179,6 +179,14 @@ function renderMath(html: string, blockMaths: string[]): string {
   return result;
 }
 
+function renderWikiLinks(html: string): string {
+  // Matches [[filename]] or [[filename|alias]]
+  return html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias: string | null) => {
+    const text = alias || target;
+    return `<a class="wikilink" href="javascript:void(0)" data-target="${target.trim()}">${text.trim()}</a>`;
+  });
+}
+
 export interface RenderResult {
   html: string;
   mermaidBlocks: string[];
@@ -247,8 +255,11 @@ export function renderMarkdown(src: string): RenderResult {
   // Render KaTeX
   const withMath = renderMath(rawHtml, blockMaths);
 
+  // Render WikiLinks
+  const withWiki = renderWikiLinks(withMath);
+
   // Restore escaped dollar signs
-  const finalHtml = withMath.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), "$");
+  const finalHtml = withWiki.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), "$");
 
   return {
     html: finalHtml,
