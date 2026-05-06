@@ -149,6 +149,7 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
 }
 
 fn rebuild_menu(app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
     if let Ok(menu) = build_menu(app) {
         app.set_menu(menu).ok();
     }
@@ -166,7 +167,7 @@ struct RecentPayload {
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(AppState {
             pending_files: Mutex::new(Vec::new()),
             frontend_ready: AtomicBool::new(false),
@@ -175,8 +176,28 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(commands::SearchState(Mutex::new(None)))
+        .plugin(tauri_plugin_os::init())
+        .manage(commands::SearchState(Mutex::new(None)));
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.menu(|app| build_menu(app));
+    }
+
+    let app = builder
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
+                }
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = window.set_decorations(false);
+                }
+            }
+
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
                 let args: Vec<String> = std::env::args().collect();
@@ -190,7 +211,6 @@ pub fn run() {
             }
             Ok(())
         })
-        .menu(|app| build_menu(app))
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {

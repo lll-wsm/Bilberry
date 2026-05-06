@@ -15,6 +15,7 @@
   import { X } from "lucide-svelte";
   import TabBar from "./editor/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
+  import Titlebar from "./ui/Titlebar.svelte";
 
   let sidebarOpen = $state(true);
   let recentDirs = $state<string[]>([]);
@@ -165,31 +166,35 @@
 </script>
 
 {#if showWelcome}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="welcome" onmousedown={onWelcomeDrag}>
-    <h1>Bilberry</h1>
-    <p class="subtitle">Markdown 笔记编辑器</p>
-    <div class="actions">
-      <button class="btn" onclick={handleCreateVault}>新建目录</button>
-      <button class="btn" onclick={handleOpenVault}>打开目录</button>
-    </div>
-    {#if recentDirs.length > 0}
-      <div class="recent">
-        <p class="recent-label">最近打开</p>
-        {#each recentDirs as dir}
-          <div class="recent-item" onclick={() => handleOpenRecent(dir)} onkeydown={(e) => { if (e.key === 'Enter') handleOpenRecent(dir); }} role="button" tabindex="0" title={dir}>
-            <span class="recent-name">{dir.split("/").pop()}</span>
-            <button class="recent-remove" onclick={(e) => { e.stopPropagation(); handleRemoveHistory(dir); }}>
-              <X size={14} />
-            </button>
-          </div>
-        {/each}
+  <div class="welcome-container">
+    <Titlebar />
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="welcome" onmousedown={onWelcomeDrag}>
+      <h1>Bilberry</h1>
+      <p class="subtitle">Markdown 笔记编辑器</p>
+      <div class="actions">
+        <button class="btn" onclick={handleCreateVault}>新建目录</button>
+        <button class="btn" onclick={handleOpenVault}>打开目录</button>
       </div>
-    {/if}
+      {#if recentDirs.length > 0}
+        <div class="recent">
+          <p class="recent-label">最近打开</p>
+          {#each recentDirs as dir}
+            <div class="recent-item" onclick={() => handleOpenRecent(dir)} onkeydown={(e) => { if (e.key === 'Enter') handleOpenRecent(dir); }} role="button" tabindex="0" title={dir}>
+              <span class="recent-name">{dir.split("/").pop()}</span>
+              <button class="recent-remove" onclick={(e) => { e.stopPropagation(); handleRemoveHistory(dir); }}>
+                <X size={14} />
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="app-root">
-        <div class="layout">
+    <Titlebar />
+    <div class="layout">
       {#if sidebarOpen}
         <Sidebar />
       {/if}
@@ -214,16 +219,21 @@
 {/if}
 
 <style>
+  .welcome-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--bg-primary);
+  }
+
   .welcome {
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100vh;
     gap: 16px;
-    background: var(--bg-primary);
     color: var(--text-normal);
-    padding-top: 28px;
   }
 
   .welcome h1 {

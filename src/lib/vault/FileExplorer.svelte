@@ -10,9 +10,20 @@
 
   const editingPath = writable<string | null>(null);
 
-  let { entries = [], depth = 0 }: { entries: FileEntry[]; depth?: number } = $props();
+  let { entries = [], depth = 0, isRoot = false }: { entries: FileEntry[]; depth?: number; isRoot?: boolean } = $props();
 
   let expandedDirs = $state(new Set<string>());
+
+  // Auto-expand the root directory
+  $effect(() => {
+    if (isRoot && entries.length > 0) {
+      const rootPath = entries[0].path;
+      if (!expandedDirs.has(rootPath)) {
+        expandedDirs.add(rootPath);
+        expandedDirs = new Set(expandedDirs);
+      }
+    }
+  });
 
   // VS Code-style inline creation — shared state from store
   let pendingValue = $state("");
@@ -290,9 +301,7 @@
         <span class="chevron placeholder"></span>
       {/if}
       <span class="icon">
-        {#if entry.is_dir}
-          <Folder size={14} />
-        {:else}
+        {#if !entry.is_dir}
           {#if entry.name.endsWith(".md")}
             <FileText size={14} />
           {:else}

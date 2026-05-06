@@ -15,12 +15,6 @@
 
   const vaultPath = $derived($vaultStore.vault?.path ?? "");
 
-  function onDragRegionMouseDown(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("button, input, a, [role='button'], .sidebar-content")) return;
-    e.preventDefault();
-    getCurrentWindow().startDragging();
-  }
-
   function revealInFinder(path: string) {
     invoke("reveal_in_finder", { path });
   }
@@ -126,22 +120,8 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="sidebar" onmousedown={onDragRegionMouseDown}>
+<div class="sidebar">
   <div class="sidebar-header">
-    {#if renamingRoot}
-      <input
-        class="vault-rename-input"
-        bind:value={rootRenameValue}
-        use:focusRenameInput
-        onkeydown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); commitRootRename(); }
-          else if (e.key === "Escape") { e.preventDefault(); renamingRoot = false; }
-        }}
-        onblur={commitRootRename}
-      />
-    {:else}
-      <span class="vault-name">{$vaultStore.vault?.name ?? ""}</span>
-    {/if}
     <div class="tabs">
       <button
         class="tab"
@@ -163,7 +143,17 @@
     class:hidden-files={activeTab !== "files"}
     oncontextmenu={onEmptyContextMenu}
   >
-    <FileExplorer entries={$vaultStore.fileTree} />
+    {#if $vaultStore.vault}
+      <FileExplorer
+        entries={[{
+          name: $vaultStore.vault.name,
+          path: $vaultStore.vault.path,
+          is_dir: true,
+          children: $vaultStore.fileTree
+        }]}
+        isRoot={true}
+      />
+    {/if}
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -181,7 +171,6 @@
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary);
-    padding-top: 28px;
     position: relative;
     overflow: hidden;
   }

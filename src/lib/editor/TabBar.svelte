@@ -85,7 +85,7 @@
   });
 </script>
 
-<div class="tab-bar" data-tauri-drag-region>
+<div class="tab-bar">
   <div class="leading-fixed">
     <button
       class="sidebar-toggle no-drag"
@@ -131,7 +131,6 @@
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-divider);
     flex-shrink: 0;
-    padding-top: 28px;
   }
 
   .leading-fixed {
