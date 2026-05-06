@@ -49,6 +49,15 @@
         listen<string>("file-opened", (event) => {
           handleOpenRecentFile(event.payload);
         }),
+        listen("menu-zoom-in", () => {
+          settingsStore.update(s => ({ ...s, fontSize: Math.min(s.fontSize + 1, 40) }));
+        }),
+        listen("menu-zoom-out", () => {
+          settingsStore.update(s => ({ ...s, fontSize: Math.max(s.fontSize - 1, 8) }));
+        }),
+        listen("menu-zoom-reset", () => {
+          settingsStore.update(s => ({ ...s, fontSize: 16 }));
+        }),
       ]);
 
       if (disposed) {

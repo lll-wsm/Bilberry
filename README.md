@@ -104,24 +104,3 @@ npx svelte-check
 ## License
 
 MIT
-
-
-Debian 打包问题：
-error[E0599]: no method named `title_bar_style` found for struct `WebviewWindowBuilder<'a, R, M>` in the current scope
-   --> src/lib.rs:127:26
-    |
-123 | /                     tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
-124 | |                         .title("Bilberry")
-125 | |                         .inner_size(1200.0, 800.0)
-126 | |                         .min_inner_size(800.0, 600.0)
-127 | |                         .title_bar_style(TitleBarStyle::Overlay)
-    | |_________________________-^^^^^^^^^^^^^^^
-    |
-help: there is a method `scroll_bar_style` with a similar name
-    |
-127 -                         .title_bar_style(TitleBarStyle::Overlay)
-127 +                         .scroll_bar_style(TitleBarStyle::Overlay)
-    |
-
-For more information about this error, try `rustc --explain E0599`.
-error: could not compile `bilberry` (lib) due to 1 previous error

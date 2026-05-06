@@ -40,6 +40,22 @@ body {
   color: var(--text-normal);
   background-color: var(--bg-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Native-feel scroll bounce */
+.main-content, .sidebar, .workspace, .editor-container, .preview-container {
+  overscroll-behavior-y: bounce;
+}
+
+/* Custom Drag Region for Overlay Titlebar */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
 }
 
 /* Reset default focus */

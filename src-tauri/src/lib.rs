@@ -96,9 +96,55 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&close_window)
         .build()?;
 
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .item(&PredefinedMenuItem::undo(app, None)?)
+        .item(&PredefinedMenuItem::redo(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::cut(app, None)?)
+        .item(&PredefinedMenuItem::copy(app, None)?)
+        .item(&PredefinedMenuItem::paste(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::select_all(app, None)?)
+        .build()?;
+
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("zoom_in", "Zoom In")
+                .accelerator("CmdOrCtrl+Plus")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("zoom_out", "Zoom Out")
+                .accelerator("CmdOrCtrl+-")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("actual_size", "Actual Size")
+                .accelerator("CmdOrCtrl+0")
+                .build(app)?,
+        )
+        .build()?;
+
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(
+            &MenuItemBuilder::with_id("zoom", "Zoom")
+                .build(app)?,
+        )
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .build()?;
+
     MenuBuilder::new(app)
         .item(&app_menu)
         .item(&file_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .item(&window_menu)
         .build()
 }
 
@@ -128,6 +174,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(commands::SearchState(Mutex::new(None)))
         .setup(|app| {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -165,6 +212,20 @@ pub fn run() {
                         builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
                     }
                     builder.build().ok();
+                }
+                "zoom_in" => {
+                    app.emit("menu-zoom-in", ()).ok();
+                }
+                "zoom_out" => {
+                    app.emit("menu-zoom-out", ()).ok();
+                }
+                "actual_size" => {
+                    app.emit("menu-zoom-reset", ()).ok();
+                }
+                "zoom" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.maximize();
+                    }
                 }
                 "close_window" => {
                     app.emit("menu-close-window", ()).ok();

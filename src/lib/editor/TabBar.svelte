@@ -88,7 +88,7 @@
 <div class="tab-bar" data-tauri-drag-region>
   <div class="leading-fixed">
     <button
-      class="sidebar-toggle"
+      class="sidebar-toggle no-drag"
       onclick={onToggleSidebar}
       title="切换侧边栏"
     >
@@ -100,7 +100,7 @@
     </button>
   </div>
 
-  <div class="tabs-scroll" onwheel={onWheel}>
+  <div class="tabs-scroll no-drag" onwheel={onWheel}>
     {#each tabs as tab (tab.path)}
       <button
         class="tab"
@@ -111,7 +111,7 @@
       >
         <span class="tab-name">{tab.path.split("/").pop()}</span>
         <span
-          class="tab-close"
+          class="tab-close no-drag"
           role="button"
           tabindex="-1"
           onclick={(e) => onTabClose(e, tab.path)}

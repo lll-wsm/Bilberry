@@ -1,6 +1,7 @@
 <script lang="ts">
   import { editorStore, triggerFindCount } from "../../stores/editor";
   import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
+  import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import Editor from "./Editor.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
   import Preview from "../preview/Preview.svelte";
@@ -14,20 +15,26 @@
     triggerFindCount.update(n => n + 1);
   }
 
+  async function handlePaste() {
+    try {
+      const text = await readText();
+      if (text) {
+        // Try to insert text at cursor
+        document.execCommand("insertText", false, text);
+      }
+    } catch (err) {
+      console.error("Failed to read clipboard:", err);
+      // Fallback to native paste if Tauri plugin fails
+      document.execCommand("paste");
+    }
+  }
+
   function onWorkspaceContextMenu(e: MouseEvent) {
     const items: ContextMenuItem[] = [
       { label: "剪切", action: () => document.execCommand("cut") },
       { label: "复制", action: () => document.execCommand("copy") },
       { label: "删除", action: () => document.execCommand("delete") },
-      { label: "粘贴", action: () => {
-        navigator.clipboard.readText().then(text => {
-          if (text && onContentChange) {
-            document.execCommand("insertText", false, text);
-          }
-        }).catch(() => {
-          document.execCommand("paste");
-        });
-      }},
+      { label: "粘贴", action: () => handlePaste() },
     ];
 
     if ($editorStore.mode !== "preview") {
