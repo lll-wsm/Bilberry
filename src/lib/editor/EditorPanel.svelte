@@ -64,6 +64,7 @@
       <Preview
         source={content}
         mode={$currentFileIsMermaid ? "mermaid" : "markdown"}
+        currentFilePath={$currentFile}
         scrollSyncRatio={viewScrollRatio}
         onScrollChange={(ratio) => {
           viewScrollRatio = ratio;
@@ -93,6 +94,7 @@
         <Preview
           source={content}
           mode={$currentFileIsMermaid ? "mermaid" : "markdown"}
+          currentFilePath={$currentFile}
           scrollSyncRatio={viewScrollRatio}
         />
       </div>

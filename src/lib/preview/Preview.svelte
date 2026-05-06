@@ -1,13 +1,15 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import { tick } from "svelte";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, type RenderResult } from "./markdown";
   import { themes } from "./themes";
 
-  let { source = "", mode = "markdown", scrollSyncRatio = null, onScrollChange }: {
+  let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange }: {
     source?: string;
     mode?: "markdown" | "mermaid";
+    currentFilePath?: string | null;
     scrollSyncRatio?: number | null;
     onScrollChange?: (ratio: number) => void;
   } = $props();
@@ -15,6 +17,53 @@
   let container: HTMLDivElement;
   let result: RenderResult | undefined = $state.raw();
   let renderError: string | null = $state(null);
+
+  function getMimeType(filePath: string): string {
+    const lower = filePath.toLowerCase();
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".bmp")) return "image/bmp";
+    if (lower.endsWith(".svg")) return "image/svg+xml";
+    if (lower.endsWith(".avif")) return "image/avif";
+    if (lower.endsWith(".ico")) return "image/x-icon";
+    return "application/octet-stream";
+  }
+
+  function dirname(filePath: string): string {
+    const index = filePath.lastIndexOf("/");
+    return index >= 0 ? filePath.slice(0, index) : filePath;
+  }
+
+  function resolveImagePath(rawSrc: string, baseFilePath: string | null): string | null {
+    if (!rawSrc || /^(https?:|data:|blob:|asset:|http:\/\/asset\.localhost)/i.test(rawSrc)) {
+      return null;
+    }
+
+    if (rawSrc.startsWith("file://")) {
+      try {
+        return decodeURIComponent(new URL(rawSrc).pathname);
+      } catch {
+        return null;
+      }
+    }
+
+    if (rawSrc.startsWith("/")) {
+      try {
+        return decodeURIComponent(rawSrc);
+      } catch {
+        return rawSrc;
+      }
+    }
+    if (!baseFilePath) return null;
+
+    try {
+      return decodeURIComponent(new URL(rawSrc, `file://${dirname(baseFilePath)}/`).pathname);
+    } catch {
+      return null;
+    }
+  }
 
   $effect(() => {
     try {
@@ -48,6 +97,45 @@
       }
     })();
     return () => { cancelled = true; };
+  });
+
+  // Resolve local Markdown image paths to blob URLs the webview can display.
+  $effect(() => {
+    if (mode !== "markdown" || !html || !container) return;
+
+    let cancelled = false;
+    const objectUrls: string[] = [];
+
+    (async () => {
+      await tick();
+      const images = Array.from(container.querySelectorAll(".markdown-body img")) as HTMLImageElement[];
+
+      await Promise.all(images.map(async (img) => {
+        const rawSrc = img.getAttribute("src") ?? "";
+        const resolvedPath = resolveImagePath(rawSrc, currentFilePath);
+        if (!resolvedPath) return;
+
+        try {
+          const bytes = await invoke<number[]>("read_binary_file", { path: resolvedPath });
+          if (cancelled) return;
+
+          const objectUrl = URL.createObjectURL(
+            new Blob([new Uint8Array(bytes)], { type: getMimeType(resolvedPath) }),
+          );
+          objectUrls.push(objectUrl);
+          img.src = objectUrl;
+          img.dataset.localResolved = "true";
+        } catch (error) {
+          console.error("Failed to resolve markdown image:", resolvedPath, error);
+          img.alt = `${img.alt || rawSrc} (加载失败)`;
+        }
+      }));
+    })();
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
   });
 
   let html = $derived(result?.html ?? "");
@@ -102,7 +190,7 @@
     margin: 0 auto;
   }
 
-  /* Keep selection bounds closer to rendered text instead of full-width blocks. */
+  /* Ensure block-level elements start on a new line. */
   :global(.markdown-body p),
   :global(.markdown-body h1),
   :global(.markdown-body h2),
@@ -112,7 +200,7 @@
   :global(.markdown-body h6),
   :global(.markdown-body blockquote),
   :global(.markdown-body figcaption) {
-    display: inline-block;
+    display: block;
     max-width: 100%;
   }
 
