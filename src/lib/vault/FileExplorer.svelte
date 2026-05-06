@@ -300,15 +300,15 @@
       {:else}
         <span class="chevron placeholder"></span>
       {/if}
-      <span class="icon">
-        {#if !entry.is_dir}
+      {#if !entry.is_dir}
+        <span class="icon">
           {#if entry.name.endsWith(".md")}
             <FileText size={14} />
           {:else}
             <File size={14} />
           {/if}
-        {/if}
-      </span>
+        </span>
+      {/if}
       {#if $editingPath === entry.path}
         <input
           class="rename-input"
