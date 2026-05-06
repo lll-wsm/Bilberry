@@ -293,6 +293,7 @@ pub fn run() {
             commands::create_vault,
             commands::get_file_tree,
             commands::read_note,
+            commands::read_binary_file,
             commands::write_note,
             commands::create_note,
             commands::delete_note,

@@ -184,6 +184,23 @@ export interface RenderResult {
   mermaidBlocks: string[];
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function formatMermaidError(error: unknown, source?: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const sourceBlock = source
+    ? `<div class="mermaid-error-source"><strong>Mermaid 源码</strong><pre>${escapeHtml(source)}</pre></div>`
+    : "";
+  return `<div class="mermaid-error">${sourceBlock}<strong>Mermaid 语法错误</strong><pre>${escapeHtml(message)}</pre></div>`;
+}
+
 /**
  * Render mermaid diagrams to SVG using the mermaid.render() API.
  * This is called from Preview.svelte after the component mounts (browser only).
@@ -195,6 +212,7 @@ export async function renderMermaidBlocks(
   const mermaid = await import("mermaid");
   mermaid.default.initialize({
     startOnLoad: false,
+    suppressErrorRendering: true,
     theme: isDark ? "dark" : "default",
     securityLevel: "loose",
   });
@@ -202,6 +220,11 @@ export async function renderMermaidBlocks(
   const svgs: string[] = [];
   for (let i = 0; i < blocks.length; i++) {
     try {
+      const parseResult = await mermaid.default.parse(blocks[i], { suppressErrors: true });
+      if (parseResult === false) {
+        svgs.push(formatMermaidError("未知 Mermaid 语法错误", blocks[i]));
+        continue;
+      }
       const { svg } = await mermaid.default.render(
         `mermaid-svg-${i}-${Date.now()}`,
         blocks[i],
@@ -209,7 +232,7 @@ export async function renderMermaidBlocks(
       svgs.push(svg);
     } catch (e: any) {
       console.error(`Mermaid render error (block ${i}):`, e);
-      svgs.push(`<div class="mermaid-error">图表渲染失败: ${e.message || e}</div>`);
+      svgs.push(formatMermaidError(e, blocks[i]));
     }
   }
   return svgs;
@@ -230,5 +253,12 @@ export function renderMarkdown(src: string): RenderResult {
   return {
     html: finalHtml,
     mermaidBlocks,
+  };
+}
+
+export function renderMermaidDocument(src: string): RenderResult {
+  return {
+    html: `<div class="mermaid-container" id="mermaid-0"></div>`,
+    mermaidBlocks: [src.trim()],
   };
 }

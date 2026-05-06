@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { renderMarkdown } from "../src/lib/preview/markdown.ts";
+import { formatMermaidError, renderMarkdown, renderMermaidDocument } from "../src/lib/preview/markdown.ts";
 
 test("extracts mermaid blocks with LF line endings", () => {
   const result = renderMarkdown("```mermaid\ngraph TD\nA-->B\n```");
@@ -87,5 +87,25 @@ test("does not let an unterminated block math swallow following markdown", () =>
 
   assert.equal(result.mermaidBlocks.length, 1);
   assert.match(result.html, /Mermaid/);
+  assert.match(result.html, /class="mermaid-container"/);
+});
+
+test("formats mermaid errors as inline preview markup", () => {
+  const html = formatMermaidError(new Error('Parse error on line 1: A["x"]'), 'graph TD\nA["x"]');
+
+  assert.match(html, /class="mermaid-error"/);
+  assert.match(html, /class="mermaid-error-source"/);
+  assert.match(html, /Mermaid 源码/);
+  assert.match(html, /Mermaid 语法错误/);
+  assert.match(html, /<pre>/);
+  assert.match(html, /A\[[\s\S]*&quot;x&quot;[\s\S]*\]/);
+  assert.match(html, /graph TD/);
+});
+
+test("renders a mermaid file as a single diagram container", () => {
+  const result = renderMermaidDocument("graph TD\nA-->B");
+
+  assert.equal(result.mermaidBlocks.length, 1);
+  assert.equal(result.mermaidBlocks[0], "graph TD\nA-->B");
   assert.match(result.html, /class="mermaid-container"/);
 });

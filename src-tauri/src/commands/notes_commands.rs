@@ -13,6 +13,11 @@ pub fn read_note(path: String, encoding: Option<String>) -> Result<String, Strin
 }
 
 #[tauri::command]
+pub fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
+    fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
 pub fn write_note(path: String, content: String, encoding: Option<String>) -> Result<(), String> {
     // Ensure parent directory exists
     if let Some(parent) = Path::new(&path).parent() {

@@ -131,6 +131,8 @@
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-divider);
     flex-shrink: 0;
+    height: 31px;
+    box-sizing: border-box;
   }
 
   .leading-fixed {

@@ -1,15 +1,19 @@
 <script lang="ts">
   import { editorStore, triggerFindCount } from "../../stores/editor";
+  import { currentFileIsImage, currentFileIsMermaid, currentFileSupportsPreview, currentFile } from "../../stores/vault";
   import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
   import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import Editor from "./Editor.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
+  import ImageViewer from "./ImageViewer.svelte";
   import Preview from "../preview/Preview.svelte";
 
   let { content = "", onContentChange }: {
     content?: string;
     onContentChange?: (text: string) => void;
   } = $props();
+
+  let viewScrollRatio = $state(0);
 
   function triggerFind() {
     triggerFindCount.update(n => n + 1);
@@ -30,6 +34,8 @@
   }
 
   function onWorkspaceContextMenu(e: MouseEvent) {
+    if ($currentFileIsImage) return;
+
     const items: ContextMenuItem[] = [
       { label: "剪切", action: () => document.execCommand("cut") },
       { label: "复制", action: () => document.execCommand("copy") },
@@ -47,22 +53,58 @@
 </script>
 
 <div class="editor-panel">
-  <EditorToolbar />
+  {#if $currentFileSupportsPreview}
+    <EditorToolbar />
+  {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="workspace" class:split={$editorStore.mode === "split"} oncontextmenu={onWorkspaceContextMenu}>
-    {#if $editorStore.mode === "preview"}
-      <Preview source={content} />
+    {#if $currentFileIsImage}
+      <ImageViewer path={$currentFile ?? ""} />
+    {:else if $editorStore.mode === "preview"}
+      <Preview
+        source={content}
+        mode={$currentFileIsMermaid ? "mermaid" : "markdown"}
+        scrollSyncRatio={viewScrollRatio}
+        onScrollChange={(ratio) => {
+          viewScrollRatio = ratio;
+        }}
+      />
     {:else if $editorStore.mode === "live"}
-      <Editor {content} {onContentChange} />
+      <Editor
+        {content}
+        {onContentChange}
+        initialScrollRatio={viewScrollRatio}
+        onScrollChange={(ratio) => {
+          viewScrollRatio = ratio;
+        }}
+      />
     {:else if $editorStore.mode === "split"}
       <div class="pane editor-pane">
-        <Editor {content} {onContentChange} />
+        <Editor
+          {content}
+          {onContentChange}
+          initialScrollRatio={viewScrollRatio}
+          onScrollChange={(ratio) => {
+            viewScrollRatio = ratio;
+          }}
+        />
       </div>
       <div class="pane preview-pane">
-        <Preview source={content} />
+        <Preview
+          source={content}
+          mode={$currentFileIsMermaid ? "mermaid" : "markdown"}
+          scrollSyncRatio={viewScrollRatio}
+        />
       </div>
     {:else}
-      <Editor {content} {onContentChange} />
+      <Editor
+        {content}
+        {onContentChange}
+        initialScrollRatio={viewScrollRatio}
+        onScrollChange={(ratio) => {
+          viewScrollRatio = ratio;
+        }}
+      />
     {/if}
   </div>
 </div>

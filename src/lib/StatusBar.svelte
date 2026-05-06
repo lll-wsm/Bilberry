@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { vaultStore } from "../stores/vault";
+  import { currentFileIsImage, vaultStore } from "../stores/vault";
   import { editorStore } from "../stores/editor";
   import { settingsStore } from "../stores/settings";
   import { Sun, Moon, Settings } from "lucide-svelte";
@@ -69,7 +69,7 @@
       <span class="stat">{wordCount} 词</span>
       <span class="stat">{charCount} 字</span>
       
-      {#if $vaultStore.currentFilePath}
+      {#if $vaultStore.currentFilePath && !$currentFileIsImage}
         <select 
           class="encoding-select" 
           value={$vaultStore.currentEncoding} 

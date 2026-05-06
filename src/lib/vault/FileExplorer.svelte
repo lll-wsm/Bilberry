@@ -57,7 +57,7 @@
   function handleClick(entry: FileEntry) {
     if (entry.is_dir) {
       toggleDir(entry.path);
-    } else if (entry.name.endsWith(".md")) {
+    } else {
       vaultStore.openNote(entry.path);
     }
   }
@@ -132,7 +132,7 @@
         await invoke("create_directory", { path });
       }
       await vaultStore.refreshFileTree();
-      if (pending.type === "file" && name.endsWith(".md")) {
+      if (pending.type === "file") {
         await vaultStore.openNote(path);
       }
     } catch (e) {

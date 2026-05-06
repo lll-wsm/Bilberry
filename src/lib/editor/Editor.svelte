@@ -10,16 +10,28 @@
   import { pendingNavRange, triggerFindCount } from "../../stores/editor";
   import type { Extension } from "@codemirror/state";
 
-  let { content = "", readonly = false, onContentChange }: {
+  let { content = "", readonly = false, onContentChange, onScrollChange, initialScrollRatio = null }: {
     content?: string;
     readonly?: boolean;
     onContentChange?: (text: string) => void;
+    onScrollChange?: (ratio: number) => void;
+    initialScrollRatio?: number | null;
   } = $props();
 
   let container: HTMLDivElement;
   let view: EditorView;
   let isDestroyed = false;
   let isSyncing = false;
+  let scrollerEl: HTMLElement | null = null;
+  let hasAppliedInitialScroll = false;
+  let lastAppliedScrollRatio: number | null = null;
+
+  function scrollEditorToRatio(ratio: number | null | undefined) {
+    if (!scrollerEl || ratio == null) return;
+    const maxScroll = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+    scrollerEl.scrollTop = maxScroll > 0 ? maxScroll * ratio : 0;
+    lastAppliedScrollRatio = ratio;
+  }
 
   const themeCompartment = new Compartment();
 
@@ -71,6 +83,18 @@
     });
 
     view = new EditorView({ state, parent: container });
+    scrollerEl = container.querySelector(".cm-scroller");
+
+    const handleScroll = () => {
+      if (!scrollerEl || !onScrollChange) return;
+      const maxScroll = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+      const ratio = maxScroll > 0 ? scrollerEl.scrollTop / maxScroll : 0;
+      onScrollChange(ratio);
+    };
+    scrollerEl?.addEventListener("scroll", handleScroll, { passive: true });
+    scrollEditorToRatio(initialScrollRatio);
+    hasAppliedInitialScroll = true;
+    handleScroll();
 
     // Reactive theme switch
     const unsubTheme = theme.subscribe(($theme) => {
@@ -85,6 +109,8 @@
 
     return () => {
       unsubTheme();
+      scrollerEl?.removeEventListener("scroll", handleScroll);
+      scrollerEl = null;
       isDestroyed = true;
       view.destroy();
     };
@@ -126,6 +152,13 @@
       openSearchPanel(view);
       untrack(() => triggerFindCount.set(0));
     }
+  });
+
+  $effect(() => {
+    if (!view || !scrollerEl || !hasAppliedInitialScroll) return;
+    if (initialScrollRatio == null) return;
+    if (lastAppliedScrollRatio !== null && Math.abs(lastAppliedScrollRatio - initialScrollRatio) < 0.001) return;
+    scrollEditorToRatio(initialScrollRatio);
   });
 </script>
 

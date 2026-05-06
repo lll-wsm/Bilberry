@@ -2,10 +2,15 @@
   import { tick } from "svelte";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
-  import { renderMarkdown, renderMermaidBlocks, type RenderResult } from "./markdown";
+  import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, type RenderResult } from "./markdown";
   import { themes } from "./themes";
 
-  let { source = "" }: { source?: string } = $props();
+  let { source = "", mode = "markdown", scrollSyncRatio = null, onScrollChange }: {
+    source?: string;
+    mode?: "markdown" | "mermaid";
+    scrollSyncRatio?: number | null;
+    onScrollChange?: (ratio: number) => void;
+  } = $props();
 
   let container: HTMLDivElement;
   let result: RenderResult | undefined = $state.raw();
@@ -13,7 +18,7 @@
 
   $effect(() => {
     try {
-      result = renderMarkdown(source);
+      result = mode === "mermaid" ? renderMermaidDocument(source) : renderMarkdown(source);
       renderError = null;
     } catch (e: any) {
       console.error("Markdown render error:", e);
@@ -46,9 +51,27 @@
   });
 
   let html = $derived(result?.html ?? "");
+
+  $effect(() => {
+    if (!container || scrollSyncRatio === null) return;
+
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    const nextTop = maxScroll > 0 ? maxScroll * scrollSyncRatio : 0;
+
+    if (Math.abs(container.scrollTop - nextTop) < 1) return;
+
+    container.scrollTop = nextTop;
+  });
+
+  function handleScroll() {
+    if (!container || !onScrollChange) return;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    const ratio = maxScroll > 0 ? container.scrollTop / maxScroll : 0;
+    onScrollChange(ratio);
+  }
 </script>
 
-<div bind:this={container} class="preview">
+<div bind:this={container} class="preview" onscroll={handleScroll}>
   {#if renderError}
     <div class="render-error">
       <strong>渲染错误:</strong> {renderError}
@@ -77,6 +100,30 @@
   .markdown-body {
     max-width: 800px;
     margin: 0 auto;
+  }
+
+  /* Keep selection bounds closer to rendered text instead of full-width blocks. */
+  :global(.markdown-body p),
+  :global(.markdown-body h1),
+  :global(.markdown-body h2),
+  :global(.markdown-body h3),
+  :global(.markdown-body h4),
+  :global(.markdown-body h5),
+  :global(.markdown-body h6),
+  :global(.markdown-body blockquote),
+  :global(.markdown-body figcaption) {
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  :global(.markdown-body ul),
+  :global(.markdown-body ol) {
+    display: flow-root;
+  }
+
+  :global(.markdown-body li) {
+    display: list-item;
+    max-width: none;
   }
 
   .render-error {
@@ -126,6 +173,37 @@
   :global(.mermaid-error) {
     color: #e74c3c;
     font-size: 12px;
-    padding: 8px;
+    padding: 10px 12px;
+    text-align: left;
+    border: 1px solid rgba(231, 76, 60, 0.25);
+    border-radius: 6px;
+    background: rgba(231, 76, 60, 0.06);
+  }
+
+  :global(.mermaid-error strong) {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  :global(.mermaid-error-source) {
+    margin-bottom: 12px;
+    color: var(--text-primary);
+  }
+
+  :global(.mermaid-error-source pre) {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: rgba(128, 128, 128, 0.08);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  :global(.mermaid-error pre) {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   }
 </style>

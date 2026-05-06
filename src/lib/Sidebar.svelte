@@ -179,6 +179,8 @@
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid var(--border-divider);
+    height: 31px;
+    box-sizing: border-box;
   }
 
   .vault-name {
@@ -203,6 +205,7 @@
 
   .tabs {
     display: flex;
+    height: 100%;
     gap: 0;
   }
 
@@ -211,13 +214,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--spacing-2) 0;
+    padding: 0;
+    height: 100%;
     border: none;
     background: transparent;
     cursor: pointer;
     color: var(--text-muted);
     border-bottom: 2px solid transparent;
     transition: all 0.1s ease;
+    box-sizing: border-box;
   }
 
   .tab:hover {

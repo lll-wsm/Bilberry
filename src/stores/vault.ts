@@ -63,6 +63,22 @@ const initialState: VaultState = {
   loading: false,
 };
 
+export function isMarkdownPath(path: string | null | undefined): boolean {
+  return !!path && path.toLowerCase().endsWith(".md");
+}
+
+export function isMermaidPath(path: string | null | undefined): boolean {
+  return !!path && /\.(mmd|mermaid)$/i.test(path);
+}
+
+export function isPreviewableTextPath(path: string | null | undefined): boolean {
+  return isMarkdownPath(path) || isMermaidPath(path);
+}
+
+export function isImagePath(path: string | null | undefined): boolean {
+  return !!path && /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(path);
+}
+
 function createVaultStore() {
   const { subscribe, set, update } = writable<VaultState>(initialState);
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -184,9 +200,11 @@ function createVaultStore() {
           openTabs: [...s.openTabs, { path, content: "", encoding }],
         };
       });
-      editorStore.setMode("preview");
+      editorStore.syncModeForFile(isPreviewableTextPath(path));
       try {
-        const content = await invoke<string>("read_note", { path, encoding });
+        const content = isImagePath(path)
+          ? ""
+          : await invoke<string>("read_note", { path, encoding });
         update((s) => ({
           ...s,
           currentContent: content,
@@ -219,6 +237,7 @@ function createVaultStore() {
     },
 
     switchTab(path: string) {
+      editorStore.syncModeForFile(isPreviewableTextPath(path));
       update((s) => {
         if (path === s.currentFilePath) return s;
         // Save content from current tab
@@ -251,6 +270,7 @@ function createVaultStore() {
           ).filter(t => t.path !== path);
 
           if (savedTabs.length === 0) {
+            editorStore.reset();
             return {
               ...s,
               currentFilePath: null,
@@ -264,6 +284,7 @@ function createVaultStore() {
           const currentIdx = s.openTabs.findIndex(t => t.path === path);
           const newIdx = Math.min(currentIdx, savedTabs.length - 1);
           const next = savedTabs[newIdx];
+          editorStore.syncModeForFile(isPreviewableTextPath(next.path));
           return {
             ...s,
             currentFilePath: next.path,
@@ -283,6 +304,9 @@ function createVaultStore() {
 
     handleFileRename(oldPath: string, newPath: string) {
       update((s) => {
+        if (s.currentFilePath === oldPath) {
+          editorStore.syncModeForFile(isPreviewableTextPath(newPath));
+        }
         const updatedTabs = s.openTabs.map(t =>
           t.path === oldPath ? { ...t, path: newPath } : t
         );
@@ -323,7 +347,7 @@ function createVaultStore() {
     },
 
     updateContent(path: string | null, content: string) {
-      if (path) {
+      if (path && !isImagePath(path)) {
         let encoding = "UTF-8";
         update((s) => {
           encoding = s.currentEncoding;
@@ -466,4 +490,8 @@ function flattenFileTree(entries: FileEntry[]): { path: string; name: string }[]
 
 export const currentFile = derived(vaultStore, ($v) => $v.currentFilePath);
 export const isVaultOpen = derived(vaultStore, ($v) => $v.vault !== null);
+export const currentFileIsMarkdown = derived(vaultStore, ($v) => isMarkdownPath($v.currentFilePath));
+export const currentFileIsMermaid = derived(vaultStore, ($v) => isMermaidPath($v.currentFilePath));
+export const currentFileSupportsPreview = derived(vaultStore, ($v) => isPreviewableTextPath($v.currentFilePath));
+export const currentFileIsImage = derived(vaultStore, ($v) => isImagePath($v.currentFilePath));
 ;

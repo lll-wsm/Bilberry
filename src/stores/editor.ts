@@ -11,19 +11,38 @@ export type EditorMode = "split" | "preview" | "source" | "live";
 interface EditorState {
   mode: EditorMode;
   showToolbar: boolean;
+  markdownMode: EditorMode;
 }
 
 function createEditorStore() {
   const { subscribe, update, set } = writable<EditorState>({
     mode: "preview",
     showToolbar: true,
+    markdownMode: "preview",
   });
 
   return {
     subscribe,
 
     setMode(mode: EditorMode) {
-      update((s) => ({ ...s, mode }));
+      update((s) => ({ ...s, mode, markdownMode: mode }));
+    },
+
+    syncModeForFile(isMarkdown: boolean) {
+      update((s) => {
+        if (isMarkdown) {
+          return {
+            ...s,
+            mode: s.markdownMode,
+          };
+        }
+
+        return {
+          ...s,
+          mode: "source",
+          markdownMode: s.mode,
+        };
+      });
     },
 
     toggleToolbar() {
@@ -31,7 +50,7 @@ function createEditorStore() {
     },
 
     reset() {
-      set({ mode: "preview", showToolbar: true });
+      set({ mode: "preview", showToolbar: true, markdownMode: "preview" });
     },
   };
 }
