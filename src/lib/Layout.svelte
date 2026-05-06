@@ -16,6 +16,7 @@
   import TabBar from "./editor/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
   import Titlebar from "./ui/Titlebar.svelte";
+  import MenuBar from "./ui/MenuBar.svelte";
 
   let sidebarOpen = $state(true);
   let recentDirs = $state<string[]>([]);
@@ -168,6 +169,7 @@
 {#if showWelcome}
   <div class="welcome-container">
     <Titlebar />
+    <MenuBar />
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="welcome" onmousedown={onWelcomeDrag}>
       <h1>Bilberry</h1>
@@ -194,6 +196,7 @@
 {:else}
   <div class="app-root">
     <Titlebar />
+    <MenuBar />
     <div class="layout">
       {#if sidebarOpen}
         <Sidebar />

@@ -5,6 +5,21 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuIt
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
+#[tauri::command]
+fn create_new_window(app: tauri::AppHandle) {
+    let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
+    #[allow(unused_mut)]
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title("Bilberry")
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(800.0, 600.0);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
+    }
+    builder.build().ok();
+}
+
 static WINDOW_COUNT: AtomicU32 = AtomicU32::new(1);
 
 struct AppState {
@@ -297,6 +312,7 @@ pub fn run() {
             commands::remove_from_recent,
             refresh_menu,
             notify_frontend_ready,
+            create_new_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
