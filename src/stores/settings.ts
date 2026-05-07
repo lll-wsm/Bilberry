@@ -11,6 +11,7 @@ export interface Settings {
   autoSaveDelay: number;
   sidebarWidth: number;
   previewTheme: string;
+  theme: "light" | "dark" | "system";
 }
 
 const defaultSettings: Settings = {
@@ -21,6 +22,7 @@ const defaultSettings: Settings = {
   autoSaveDelay: 1000,
   sidebarWidth: 240,
   previewTheme: "bear-default",
+  theme: "system",
 };
 
 function createSettingsStore() {

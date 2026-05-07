@@ -102,8 +102,24 @@ initPreviewThemeSync();
     }
   }
 
+  let systemIsDark = $state(typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false);
+
+  onMount(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      systemIsDark = e.matches;
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  });
+
   $effect(() => {
-    applyTheme($settingsStore.previewTheme);
+    let tid = $settingsStore.previewTheme;
+    if (tid === "system") {
+      tid = systemIsDark ? "dark-graphite" : "default";
+    }
+    applyTheme(tid);
   });
 
   async function handleOpenVault() {

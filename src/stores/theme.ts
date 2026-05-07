@@ -1,44 +1,39 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
+import { settingsStore } from "./settings";
 
 export type Theme = "light" | "dark" | "system";
 
 function getSystemTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function createThemeStore() {
-  // Load initial preference from localStorage or default to system
-  const saved = localStorage.getItem("theme-preference") as Theme | null;
-  const initial: Theme = saved || "system";
-  
-  const { subscribe, set, update } = writable<Theme>(initial);
+  const { subscribe, set } = writable<Theme>("system");
 
   // Apply theme to document
-  function applyTheme(t: Theme) {
+  function applyThemeToDOM(t: Theme) {
+    if (typeof window === "undefined") return;
     const root = document.documentElement;
     const effectiveTheme = t === "system" ? getSystemTheme() : t;
     
     root.classList.remove("light", "dark");
     root.classList.add(effectiveTheme);
     root.style.colorScheme = effectiveTheme;
-    
-    if (t !== "system") {
-      localStorage.setItem("theme-preference", t);
-    } else {
-      localStorage.removeItem("theme-preference");
-    }
   }
 
-  // Initial apply
+  // Subscribe to settings changes
+  settingsStore.subscribe(($s) => {
+    set($s.theme);
+    applyThemeToDOM($s.theme);
+  });
+
+  // Listen for OS theme changes
   if (typeof window !== "undefined") {
-    applyTheme(initial);
-    
-    // Listen for OS theme changes
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-      let current: Theme = "system";
-      subscribe(v => current = v)();
-      if (current === "system") {
-        applyTheme("system");
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      const currentSettings = get(settingsStore);
+      if (currentSettings.theme === "system") {
+        applyThemeToDOM("system");
       }
     });
   }
@@ -46,22 +41,19 @@ function createThemeStore() {
   return {
     subscribe,
     set: (t: Theme) => {
-      set(t);
-      applyTheme(t);
+      settingsStore.updateSetting("theme", t);
     },
     toggle: () => {
-      update((t) => {
-        const next = t === "light" ? "dark" : "light";
-        applyTheme(next);
-        return next;
-      });
+      const current = get(settingsStore).theme;
+      const next = current === "light" ? "dark" : "light";
+      settingsStore.updateSetting("theme", next);
     },
     setSystem: () => {
-      set("system");
-      applyTheme("system");
+      settingsStore.updateSetting("theme", "system");
     }
   };
 }
 
 export const theme = createThemeStore();
+
 

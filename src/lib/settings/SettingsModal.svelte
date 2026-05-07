@@ -13,15 +13,29 @@
     settingsStore.updateSetting("fontSize", fontSize);
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
-    settingsStore.updateSetting("previewTheme", previewTheme);
-    applyTheme(previewTheme);
+    
+    // Logic: if previewTheme is 'system', app base theme is also 'system'.
+    // Otherwise, app base theme matches the preview theme's mode.
+    if (previewTheme === "system") {
+      settingsStore.updateSetting("theme", "system");
+      settingsStore.updateSetting("previewTheme", "system");
+    } else {
+      const selected = themes.find(t => t.id === previewTheme);
+      if (selected) {
+        settingsStore.updateSetting("theme", selected.mode);
+        settingsStore.updateSetting("previewTheme", previewTheme);
+      } else {
+        settingsStore.updateSetting("theme", "light");
+        settingsStore.updateSetting("previewTheme", "default");
+      }
+    }
+    
     onclose?.();
   }
 
   function handleThemeChange(e: Event) {
     const target = e.target as HTMLSelectElement;
     previewTheme = target.value;
-    applyTheme(previewTheme);
   }
 </script>
 
@@ -33,15 +47,16 @@
       <h2>设置</h2>
 
       <div class="field">
-        <label for="previewTheme">预览主题</label>
+        <label for="previewTheme">界面外观与主题</label>
         <select id="previewTheme" value={previewTheme} onchange={handleThemeChange}>
-          <option value="default">Default</option>
-          <optgroup label="浅色">
-            {#each themes.filter(t => t.mode === "light") as t}
+          <option value="system">自动 (跟随系统)</option>
+          <optgroup label="浅色主题">
+            <option value="default">Default (System Light)</option>
+            {#each themes.filter(t => t.mode === "light" && t.id !== "default") as t}
               <option value={t.id}>{t.label}</option>
             {/each}
           </optgroup>
-          <optgroup label="深色">
+          <optgroup label="深色主题">
             {#each themes.filter(t => t.mode === "dark") as t}
               <option value={t.id}>{t.label}</option>
             {/each}
