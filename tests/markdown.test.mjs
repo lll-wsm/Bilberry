@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { formatMermaidError, renderMarkdown, renderMermaidDocument } from "../src/lib/preview/markdown.ts";
+import {
+  formatMermaidError,
+  renderMarkdown,
+  renderMermaidDocument,
+  splitMarkdownBlocks,
+} from "../src/lib/preview/markdown.ts";
 
 test("extracts mermaid blocks with LF line endings", () => {
   const result = renderMarkdown("```mermaid\ngraph TD\nA-->B\n```");
@@ -108,4 +113,40 @@ test("renders a mermaid file as a single diagram container", () => {
   assert.equal(result.mermaidBlocks.length, 1);
   assert.equal(result.mermaidBlocks[0], "graph TD\nA-->B");
   assert.match(result.html, /class="mermaid-container"/);
+});
+
+test("splits markdown into blocks with stable line numbers", () => {
+  const blocks = splitMarkdownBlocks([
+    "# Title",
+    "",
+    "first line",
+    "second line",
+    "",
+    "- item 1",
+    "- item 2",
+  ].join("\n"));
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.startLine, block.endLine]),
+    [
+      ["heading", 1, 1],
+      ["paragraph", 3, 4],
+      ["list", 6, 7],
+    ],
+  );
+});
+
+test("keeps fenced mermaid blocks intact for live editing", () => {
+  const blocks = splitMarkdownBlocks([
+    "before",
+    "",
+    "```mermaid",
+    "graph TD",
+    "A-->B",
+    "```",
+  ].join("\n"));
+
+  assert.equal(blocks[1].type, "mermaid");
+  assert.equal(blocks[1].startLine, 3);
+  assert.equal(blocks[1].endLine, 6);
 });

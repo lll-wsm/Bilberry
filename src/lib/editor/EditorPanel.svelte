@@ -6,6 +6,7 @@
   import Editor from "./Editor.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
   import ImageViewer from "./ImageViewer.svelte";
+  import LiveEditor from "./LiveEditor.svelte";
   import Preview from "../preview/Preview.svelte";
 
   let { content = "", onContentChange }: {
@@ -71,13 +72,11 @@
         }}
       />
     {:else if $editorStore.mode === "live"}
-      <Editor
+      <LiveEditor
         {content}
+        currentFilePath={$currentFile}
+        documentMode={$currentFileIsMermaid ? "mermaid" : "markdown"}
         {onContentChange}
-        initialScrollRatio={viewScrollRatio}
-        onScrollChange={(ratio) => {
-          viewScrollRatio = ratio;
-        }}
       />
     {:else if $editorStore.mode === "split"}
       <div class="pane editor-pane">

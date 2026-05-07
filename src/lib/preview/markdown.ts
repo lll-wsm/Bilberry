@@ -16,6 +16,149 @@ interface PreprocessResult {
   blockMaths: string[];
 }
 
+export interface MarkdownBlock {
+  type: "heading" | "paragraph" | "list" | "blockquote" | "code" | "mermaid" | "image" | "table" | "other";
+  source: string;
+  startLine: number;
+  endLine: number;
+  startOffset: number;
+  endOffset: number;
+}
+
+function looksLikeHeading(line: string): boolean {
+  return /^\s{0,3}#{1,6}\s/.test(line);
+}
+
+function looksLikeFence(line: string): boolean {
+  return /^\s*```/.test(line);
+}
+
+function looksLikeBlockquote(line: string): boolean {
+  return /^\s*>/.test(line);
+}
+
+function looksLikeList(line: string): boolean {
+  return /^\s*(?:[-+*]|\d+\.)\s+/.test(line);
+}
+
+function looksLikeIndentedContinuation(line: string): boolean {
+  return /^\s{2,}\S/.test(line);
+}
+
+function looksLikeTable(line: string): boolean {
+  return /\|/.test(line);
+}
+
+function looksLikeStandaloneImage(line: string): boolean {
+  return /^\s*!\[[^\]]*\]\([^)]+\)\s*$/.test(line.trim());
+}
+
+function isBlockStarter(line: string): boolean {
+  return looksLikeHeading(line)
+    || looksLikeFence(line)
+    || looksLikeBlockquote(line)
+    || looksLikeList(line)
+    || looksLikeStandaloneImage(line);
+}
+
+export function splitMarkdownBlocks(src: string): MarkdownBlock[] {
+  const normalized = src.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const lineOffsets: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    lineOffsets.push(offset);
+    offset += line.length + 1;
+  }
+
+  const blocks: MarkdownBlock[] = [];
+  let i = 0;
+
+  function pushBlock(type: MarkdownBlock["type"], start: number, end: number) {
+    const startOffset = lineOffsets[start];
+    const endOffset = end + 1 < lineOffsets.length ? lineOffsets[end + 1] - 1 : normalized.length;
+    blocks.push({
+      type,
+      source: normalized.slice(startOffset, endOffset),
+      startLine: start + 1,
+      endLine: end + 1,
+      startOffset,
+      endOffset,
+    });
+  }
+
+  while (i < lines.length) {
+    if (!lines[i].trim()) {
+      i++;
+      continue;
+    }
+
+    const line = lines[i];
+
+    if (looksLikeFence(line)) {
+      const fenceLang = line.match(/^\s*```([^\s`]*)/)?.[1]?.toLowerCase() ?? "";
+      const start = i;
+      i++;
+      while (i < lines.length && !looksLikeFence(lines[i])) i++;
+      if (i < lines.length) i++;
+      pushBlock(fenceLang === "mermaid" ? "mermaid" : "code", start, i - 1);
+      continue;
+    }
+
+    if (looksLikeHeading(line)) {
+      pushBlock("heading", i, i);
+      i++;
+      continue;
+    }
+
+    if (looksLikeStandaloneImage(line)) {
+      pushBlock("image", i, i);
+      i++;
+      continue;
+    }
+
+    if (looksLikeBlockquote(line)) {
+      const start = i;
+      i++;
+      while (i < lines.length && (looksLikeBlockquote(lines[i]) || !lines[i].trim())) i++;
+      pushBlock("blockquote", start, i - 1);
+      continue;
+    }
+
+    if (looksLikeList(line)) {
+      const start = i;
+      i++;
+      while (
+        i < lines.length
+        && (looksLikeList(lines[i]) || looksLikeIndentedContinuation(lines[i]) || !lines[i].trim())
+      ) {
+        i++;
+      }
+      pushBlock("list", start, i - 1);
+      continue;
+    }
+
+    if (
+      looksLikeTable(line)
+      && i + 1 < lines.length
+      && /^\s*\|?[-: ]+\|[-|: ]*$/.test(lines[i + 1])
+    ) {
+      const start = i;
+      i += 2;
+      while (i < lines.length && lines[i].trim() && looksLikeTable(lines[i])) i++;
+      pushBlock("table", start, i - 1);
+      continue;
+    }
+
+    const start = i;
+    i++;
+    while (i < lines.length && lines[i].trim() && !isBlockStarter(lines[i])) i++;
+    pushBlock("paragraph", start, i - 1);
+  }
+
+  return blocks;
+}
+
 /**
  * Pre-process markdown source:
  * - Escape \$ so they survive math processing
@@ -187,6 +330,23 @@ function renderWikiLinks(html: string): string {
   });
 }
 
+function renderHashtags(html: string): string {
+  // 1. Match HTML tags (like <a>...</a> or <img>) to skip them.
+  // 2. Use a lookbehind and lookahead to match #tag only as a whole word.
+  // This version is much safer as it won't touch text inside attribute values.
+  const regex = /(<a\b[^>]*>[\s\S]*?<\/a>)|(<[^>]+>)|(?<=[^a-zA-Z0-9_\u4e00-\u9fa5]|^)#([a-zA-Z0-9_\u4e00-\u9fa5]{1,30})(?![a-zA-Z0-9_\u4e00-\u9fa5])/g;
+  
+  return html.replace(regex, (match, anchor, tag, hash) => {
+    // If we matched an <a> tag or any other HTML tag, return it unchanged.
+    if (anchor || tag) return match;
+    
+    // Skip if it looks like a hex color (3 or 6 hex digits)
+    if (/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(hash)) return match;
+    
+    return `<a class="hashtag" href="javascript:void(0)" data-tag="${hash}">#${hash}</a>`;
+  });
+}
+
 export interface RenderResult {
   html: string;
   mermaidBlocks: string[];
@@ -258,8 +418,11 @@ export function renderMarkdown(src: string): RenderResult {
   // Render WikiLinks
   const withWiki = renderWikiLinks(withMath);
 
+  // Render Hashtags
+  const withTags = renderHashtags(withWiki);
+
   // Restore escaped dollar signs
-  const finalHtml = withWiki.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), "$");
+  const finalHtml = withTags.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), "$");
 
   return {
     html: finalHtml,

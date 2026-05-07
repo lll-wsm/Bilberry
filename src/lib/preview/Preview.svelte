@@ -8,12 +8,13 @@
   import { themes } from "./themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
 
-  let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange }: {
+  let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange, embedded = false }: {
     source?: string;
     mode?: "markdown" | "mermaid";
     currentFilePath?: string | null;
     scrollSyncRatio?: number | null;
     onScrollChange?: (ratio: number) => void;
+    embedded?: boolean;
   } = $props();
 
   let container: HTMLDivElement;
@@ -244,6 +245,8 @@
 
   async function handleLinkClick(e: MouseEvent) {
     const link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
+    const hashtag = (e.target as HTMLElement).closest(".hashtag") as HTMLElement;
+
     if (link) {
       e.preventDefault();
       const fileName = link.dataset.target;
@@ -281,6 +284,12 @@
 
       const fullPath = findFile($vaultStore.fileTree, fileName);
       if (fullPath) vaultStore.openNote(fullPath);
+    } else if (hashtag) {
+      e.preventDefault();
+      const tag = hashtag.dataset.tag;
+      if (tag) {
+        vaultStore.search(`#${tag}`);
+      }
     }
   }
 </script>
@@ -289,6 +298,7 @@
 <div 
   bind:this={container} 
   class="preview" 
+  class:embedded
   onscroll={handleScroll} 
   onclick={handleLinkClick}
   onmousemove={handleHover}
@@ -326,6 +336,12 @@
     background: var(--bg-primary);
   }
 
+  .preview.embedded {
+    overflow: visible;
+    padding: 0;
+    background: transparent;
+  }
+
   .markdown-body {
     max-width: 800px;
     margin: 0 auto;
@@ -355,6 +371,27 @@
 
   :global(.wikilink:hover) {
     opacity: 0.8;
+  }
+
+  :global(.hashtag) {
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.1s;
+    border: 1px solid var(--border-divider);
+    display: inline-block;
+    line-height: 1.4;
+    margin: 0 2px;
+  }
+
+  :global(.hashtag:hover) {
+    color: var(--interactive-accent);
+    border-color: var(--interactive-accent);
   }
 
   :global(.markdown-body ul),
