@@ -6,6 +6,7 @@
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, type RenderResult } from "./markdown";
   import { themes } from "./themes";
+  import LinkPreview from "../ui/LinkPreview.svelte";
 
   let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange }: {
     source?: string;
@@ -141,6 +142,88 @@
 
   let html = $derived(result?.html ?? "");
 
+  let previewVisible = $state(false);
+  let previewContent = $state("");
+  let previewX = $state(0);
+  let previewY = $state(0);
+  let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  async function handleHover(e: MouseEvent) {
+    const link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
+    const isOverPopover = (e.target as HTMLElement).closest(".link-preview-popover");
+    
+    if (link) {
+      const fileName = link.dataset.target;
+      if (!fileName) return;
+
+      if (hoverTimeout) clearTimeout(hoverTimeout);
+      
+      // If already showing this link's preview, don't restart timeout
+      if (previewVisible && Math.abs(link.getBoundingClientRect().left - previewX) < 1) return;
+
+      hoverTimeout = setTimeout(async () => {
+        const findFile = (entries: any[], targetPath: string): string | null => {
+          const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
+          for (const entry of entries) {
+            if (!entry.is_dir) {
+              const entryPath = entry.path.toLowerCase();
+              const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
+              if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) return entry.path;
+              if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) return entry.path;
+            }
+            if (entry.children) {
+              const found = findFile(entry.children, targetPath);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        const fullPath = findFile($vaultStore.fileTree, fileName);
+        if (fullPath) {
+          try {
+            const content = await invoke<string>("read_note", { path: fullPath, encoding: "UTF-8" });
+            previewContent = content; // Show all content
+            
+            const rect = link.getBoundingClientRect();
+            previewX = rect.left;
+            previewY = rect.bottom + 8;
+            
+            // Adjust X if too close to right edge
+            if (previewX + 420 > window.innerWidth) {
+              previewX = window.innerWidth - 440;
+            }
+            // Adjust Y if too close to bottom edge
+            if (previewY + 350 > window.innerHeight) {
+              previewY = rect.top - 360;
+            }
+
+            previewVisible = true;
+          } catch (err) {
+            console.error("Failed to load preview:", err);
+          }
+        }
+      }, 400);
+    } else if (!isOverPopover) {
+      if (hoverTimeout) clearTimeout(hoverTimeout);
+      hoverTimeout = setTimeout(() => {
+        const popover = document.querySelector(".link-preview-popover:hover");
+        const currentLink = document.querySelector(".wikilink:hover");
+        if (!popover && !currentLink) {
+          previewVisible = false;
+        }
+      }, 100);
+    }
+  }
+
+  function hidePreview(e: MouseEvent) {
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (relatedTarget?.closest(".link-preview-popover") || relatedTarget?.closest(".wikilink")) return;
+
+    if (hoverTimeout) clearTimeout(hoverTimeout);
+    previewVisible = false;
+  }
+
   $effect(() => {
     if (!container || scrollSyncRatio === null) return;
 
@@ -203,7 +286,14 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div bind:this={container} class="preview" onscroll={handleScroll} onclick={handleLinkClick}>
+<div 
+  bind:this={container} 
+  class="preview" 
+  onscroll={handleScroll} 
+  onclick={handleLinkClick}
+  onmousemove={handleHover}
+  onmouseleave={hidePreview}
+>
   {#if renderError}
     <div class="render-error">
       <strong>渲染错误:</strong> {renderError}
@@ -219,6 +309,13 @@
       <p>暂无内容</p>
     </div>
   {/if}
+
+  <LinkPreview 
+    visible={previewVisible} 
+    content={previewContent} 
+    x={previewX} 
+    y={previewY} 
+  />
 </div>
 
 <style>
