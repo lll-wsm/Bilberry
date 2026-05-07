@@ -5,6 +5,9 @@ export interface ThemeInfo {
 }
 
 export const themes: ThemeInfo[] = [
+  { id: "github-light", label: "GitHub Light", mode: "light" },
+  { id: "one-dark", label: "One Dark", mode: "dark" },
+  { id: "modern-zen", label: "Modern Zen", mode: "light" },
   { id: "ayu", label: "Ayu", mode: "light" },
   { id: "ayu-mirage", label: "Ayu Mirage", mode: "dark" },
   { id: "bear-default", label: "Bear Default", mode: "light" },

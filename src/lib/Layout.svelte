@@ -117,7 +117,7 @@ initPreviewThemeSync();
   $effect(() => {
     let tid = $settingsStore.previewTheme;
     if (tid === "system") {
-      tid = systemIsDark ? "dark-graphite" : "default";
+      tid = systemIsDark ? "one-dark" : "github-light";
     }
     applyTheme(tid);
   });
