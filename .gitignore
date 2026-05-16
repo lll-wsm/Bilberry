@@ -76,3 +76,8 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 lerna-lock.yaml
+
+# Project specific
+docs/
+CLAUDE.md
+GEMINI.md
