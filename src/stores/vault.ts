@@ -183,11 +183,15 @@ function createVaultStore() {
       update((s) => ({ ...s, loading: true }));
       try {
         const vault = await invoke<Vault>("create_vault", { path });
-        update(() => ({
+        const fileTree = await invoke<FileEntry[]>("get_file_tree", { path });
+        const newState: VaultState = {
           ...initialState,
           vault,
+          fileTree,
           loading: false,
-        }));
+        };
+        update(() => newState);
+        persistSession(newState);
         try {
           await invoke("build_search_index", { vaultPath: path });
           update((s) => ({ ...s, searchReady: true }));

@@ -27,8 +27,8 @@
 
   function handleItemClick(item: ContextMenuItem) {
     if (item.disabled) return;
-    item.action();
     contextMenu.hide();
+    requestAnimationFrame(() => item.action());
   }
 
   function onBackdropClick() {

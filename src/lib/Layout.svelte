@@ -56,13 +56,13 @@ initPreviewThemeSync();
           handleOpenRecentFile(event.payload);
         }),
         listen("menu-zoom-in", () => {
-          settingsStore.update(s => ({ ...s, fontSize: Math.min(s.fontSize + 1, 40) }));
+          settingsStore.updateSetting("fontSize", Math.min($settingsStore.fontSize + 1, 40));
         }),
         listen("menu-zoom-out", () => {
-          settingsStore.update(s => ({ ...s, fontSize: Math.max(s.fontSize - 1, 8) }));
+          settingsStore.updateSetting("fontSize", Math.max($settingsStore.fontSize - 1, 8));
         }),
         listen("menu-zoom-reset", () => {
-          settingsStore.update(s => ({ ...s, fontSize: 16 }));
+          settingsStore.updateSetting("fontSize", 16);
         }),
       ]);
 
@@ -143,18 +143,16 @@ initPreviewThemeSync();
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "选择目录",
+      canCreateDirectories: true,
+      title: "新建或选择目录",
     });
     if (selected) {
-      const name = prompt("输入目录名称:");
-      if (name) {
-        try {
-          await vaultStore.createVault(`${selected}/${name}`);
-          await addToHistory(`${selected}/${name}`);
-          recentDirs = await loadHistory();
-        } catch (e) {
-          alert("创建目录失败: " + e);
-        }
+      try {
+        await vaultStore.openVault(selected);
+        await addToHistory(selected);
+        recentDirs = await loadHistory();
+      } catch (e) {
+        alert("打开目录失败: " + e);
       }
     }
   }

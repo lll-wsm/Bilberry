@@ -5,7 +5,7 @@
   import { fileTreePending } from "../../stores/fileTreePending";
   import { expandToPaths } from "../../stores/expandToPaths";
   import { writable, get } from "svelte/store";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./FileExplorer.svelte";
   import { ChevronRight, ChevronDown, Folder, File, FileText } from "lucide-svelte";
@@ -28,8 +28,6 @@
   });
 
   // Expand to paths signalled from outside (e.g., session restore).
-  // Every recursive instance subscribes so that expansion cascades:
-  // root expands dir1 → mounts child → child expands dir2 → etc.
   onMount(() => {
     const unsub = expandToPaths.subscribe((req) => {
       if (req.paths.length === 0) return;
@@ -55,7 +53,8 @@
 
   // VS Code-style inline creation — shared state from store
   let pendingValue = $state("");
-  let localPending: { parentPath: string; type: "file" | "directory" } | null = $state.raw(null);
+  let localPending = $state<{ parentPath: string; type: "file" | "directory" } | null>(null);
+  let isCommitting = false;
 
   function focusInput(node: HTMLInputElement) {
     node.focus();
@@ -69,8 +68,11 @@
   }
 
   function focusPendingInput(node: HTMLInputElement) {
-    node.focus();
-    node.select();
+    // Tick ensures the DOM is ready if we just expanded the folder
+    tick().then(() => {
+      node.focus();
+      node.select();
+    });
   }
 
   function toggleDir(path: string) {
@@ -126,7 +128,7 @@
   }
 
   function startNewFile(dirPath: string) {
-    contextMenu.hide();
+    isCommitting = false;
     localPending = { parentPath: dirPath, type: "file" };
     pendingValue = "";
     if (!expandedDirs.has(dirPath)) {
@@ -136,7 +138,7 @@
   }
 
   function startNewDirectory(dirPath: string) {
-    contextMenu.hide();
+    isCommitting = false;
     localPending = { parentPath: dirPath, type: "directory" };
     pendingValue = "";
     if (!expandedDirs.has(dirPath)) {
@@ -148,10 +150,12 @@
   async function commitPending() {
     const name = pendingValue.trim();
     const pending = localPending;
-    localPending = null;
-    pendingValue = "";
-    if (!name || !pending) return;
+    if (!name || !pending) {
+      cancelPending();
+      return;
+    }
 
+    isCommitting = true;
     const path = pending.parentPath + "/" + name;
     try {
       if (pending.type === "file") {
@@ -163,14 +167,22 @@
       if (pending.type === "file") {
         await vaultStore.openNote(path);
       }
+      localPending = null;
+      pendingValue = "";
     } catch (e) {
       alert(`${pending.type === "file" ? "新建文件" : "新建目录"}失败: ${e}`);
+      isCommitting = false;
     }
   }
 
   function cancelPending() {
-    localPending = null;
-    pendingValue = "";
+    if (isCommitting) return;
+    // Small timeout to allow click/key events to process before removing the input
+    setTimeout(() => {
+      if (isCommitting) return;
+      localPending = null;
+      pendingValue = "";
+    }, 150);
   }
 
   // Sync from global store (for sidebar root-level "new file/dir" triggers)
@@ -178,6 +190,7 @@
     const pending = $fileTreePending;
     if (pending && depth === 0) {
       localPending = { parentPath: pending.parentPath, type: pending.type };
+      isCommitting = false;
       pendingValue = "";
       if (!expandedDirs.has(pending.parentPath)) {
         expandedDirs.add(pending.parentPath);
@@ -265,38 +278,6 @@
     ]);
   }
 </script>
-
-{#if depth === 0 && localPending}
-  {@const vaultPath = $vaultStore.vault?.path ?? ""}
-  {#if localPending.parentPath === vaultPath}
-    <div class="pending-entry">
-      <span class="chevron placeholder"></span>
-      <span class="icon">
-        {#if localPending.type === "file"}
-          <FileText size={14} />
-        {:else}
-          <Folder size={14} />
-        {/if}
-      </span>
-      <input
-        class="pending-input"
-        bind:value={pendingValue}
-        placeholder={localPending.type === "file" ? "文件名.md" : "目录名"}
-        use:focusPendingInput
-        onkeydown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commitPending();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            cancelPending();
-          }
-        }}
-        onblur={() => cancelPending()}
-      />
-    </div>
-  {/if}
-{/if}
 
 {#each entries as entry}
   <div class="file-entry">
