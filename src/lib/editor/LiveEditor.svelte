@@ -65,6 +65,23 @@
       stopEditing();
     }
   }
+
+  function autoResize(node: HTMLTextAreaElement) {
+    const adjustHeight = () => {
+      node.style.height = "auto";
+      node.style.height = node.scrollHeight + 2 + "px";
+    };
+
+    // Use a small delay or tick to ensure the DOM has updated with the value
+    setTimeout(adjustHeight, 0);
+
+    node.addEventListener("input", adjustHeight);
+    return {
+      destroy() {
+        node.removeEventListener("input", adjustHeight);
+      },
+    };
+  }
 </script>
 
 <div class="live-editor">
@@ -76,6 +93,7 @@
       <div class="block-body">
         <textarea
           bind:this={activeTextarea}
+          use:autoResize
           class="source-editor"
           placeholder="开始录入新内容..."
           oninput={(e) => onContentChange?.((e.currentTarget as HTMLTextAreaElement).value)}
@@ -104,9 +122,9 @@
           {#if editingIndex === index}
             <textarea
               bind:this={activeTextarea}
+              use:autoResize
               class="source-editor"
               value={block.source}
-              rows={Math.max(block.endLine - block.startLine + 1, 1)}
               oninput={(e) => replaceBlock(index, (e.currentTarget as HTMLTextAreaElement).value)}
               onblur={stopEditing}
               onkeydown={handleTextareaKeydown}
@@ -200,11 +218,12 @@
     border-radius: 8px;
     background: var(--bg-primary);
     color: var(--text-normal);
-    resize: vertical;
+    resize: none;
     font: inherit;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     line-height: 1.6;
     outline: none;
     box-sizing: border-box;
+    overflow: hidden;
   }
 </style>

@@ -16,9 +16,9 @@ interface EditorState {
 
 function createEditorStore() {
   const { subscribe, update, set } = writable<EditorState>({
-    mode: "preview",
+    mode: "live",
     showToolbar: true,
-    markdownMode: "preview",
+    markdownMode: "live",
   });
 
   return {
@@ -50,7 +50,7 @@ function createEditorStore() {
     },
 
     reset() {
-      set({ mode: "preview", showToolbar: true, markdownMode: "preview" });
+      set({ mode: "live", showToolbar: true, markdownMode: "live" });
     },
   };
 }
