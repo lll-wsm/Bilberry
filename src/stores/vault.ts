@@ -333,9 +333,17 @@ function createVaultStore() {
     },
     closeTab(path: string) {
       update((s) => {
-        const filteredTabs = s.openTabs.filter(t => t.path !== path);
+        // If path is a directory (doesn't end with a known extension, or we can check via tree)
+        // For simplicity and safety, we close any tab that starts with this path (for directories)
+        // OR matches the path exactly (for files).
+        const filteredTabs = s.openTabs.filter(t => 
+          t.path !== path && !t.path.startsWith(path + "/")
+        );
         
-        if (path === s.currentFilePath) {
+        // If current file was in the deleted/closed set, move focus
+        const isCurrentClosed = s.currentFilePath === path || (s.currentFilePath?.startsWith(path + "/"));
+
+        if (isCurrentClosed) {
           if (filteredTabs.length === 0) {
             editorStore.reset();
             const newState = {
@@ -348,9 +356,9 @@ function createVaultStore() {
             persistSession(newState);
             return newState;
           } else {
-            const currentIdx = s.openTabs.findIndex(t => t.path === path);
+            const currentIdx = s.openTabs.findIndex(t => t.path === s.currentFilePath);
             const newIdx = Math.min(currentIdx, filteredTabs.length - 1);
-            const next = filteredTabs[newIdx];
+            const next = filteredTabs[newIdx >= 0 ? newIdx : 0];
             editorStore.syncModeForFile(isPreviewableTextPath(next.path));
             const newState = {
               ...s,

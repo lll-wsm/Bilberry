@@ -100,7 +100,8 @@
       try {
         await invoke("rename_note", { oldPath: path, newPath });
         await vaultStore.refreshFileTree();
-        vaultStore.handleFileRename(path, newPath);
+        // User explicitly asked to close the right-side area after rename
+        vaultStore.closeTab(path);
       } catch (e) {
         alert("重命名失败: " + e);
       }
@@ -256,10 +257,10 @@
     ]);
   }
 
-  function onDirContextMenu(e: MouseEvent, entry: FileEntry) {
+  function onDirContextMenu(e: MouseEvent, entry: FileEntry, isRootItem = false) {
     const clipEntry = get(fileClipboard);
 
-    contextMenu.show(e, [
+    const items = [
       { label: "刷新", action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
       { label: "新建文件", action: () => startNewFile(entry.path) },
@@ -267,15 +268,30 @@
       { separator: true, label: "", action: () => {} },
       { label: "在访达中打开", action: () => revealInFinder(entry.path) },
       { separator: true, label: "", action: () => {} },
-      { label: "剪切", action: () => fileClipboard.cut(entry.path) },
-      { label: "复制", action: () => fileClipboard.copy(entry.path) },
-      { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
-      { label: "删除", action: () => handleDelete(entry.path, true) },
-      { label: "重命名", action: () => startRename(entry.path) },
+    ];
+
+    if (!isRootItem) {
+      items.push(
+        { label: "剪切", action: () => fileClipboard.cut(entry.path) },
+        { label: "复制", action: () => fileClipboard.copy(entry.path) },
+        { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
+        { label: "删除", action: () => handleDelete(entry.path, true) },
+        { label: "重命名", action: () => startRename(entry.path) },
+      );
+    } else {
+      // For root, only allow paste
+      items.push(
+        { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
+      );
+    }
+
+    items.push(
       { separator: true, label: "", action: () => {} },
       { label: "复制相对路径", action: () => copyRelativePath(entry.path) },
       { label: "复制绝对路径", action: () => copyAbsolutePath(entry.path) },
-    ]);
+    );
+
+    contextMenu.show(e, items);
   }
 </script>
 
@@ -291,7 +307,7 @@
       onclick={() => handleClick(entry)}
       oncontextmenu={(e) => {
         if (entry.is_dir) {
-          onDirContextMenu(e, entry);
+          onDirContextMenu(e, entry, isRoot);
         } else {
           onFileContextMenu(e, entry);
         }

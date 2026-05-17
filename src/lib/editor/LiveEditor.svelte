@@ -68,46 +68,63 @@
 </script>
 
 <div class="live-editor">
-  {#each blocks as block, index (block.startOffset)}
-    <div class="live-block" class:editing={editingIndex === index}>
-      <div class="line-gutter" class:module={isModuleBlock(block)}>
-        {#if editingIndex === index}
-          {#each exactLineNumbers(block) as lineNo}
-            <div class="line-no">{lineNo}</div>
-          {/each}
-        {:else if block.startLine === block.endLine}
-          <div class="line-no">{block.startLine}</div>
-        {:else}
-          <div class="line-no">{block.startLine}</div>
-          <div class="line-gap">⋮</div>
-          <div class="line-no">{block.endLine}</div>
-        {/if}
+  {#if blocks.length === 0}
+    <div class="live-block editing">
+      <div class="line-gutter">
+        <div class="line-no">1</div>
       </div>
-
       <div class="block-body">
-        {#if editingIndex === index}
-          <textarea
-            bind:this={activeTextarea}
-            class="source-editor"
-            value={block.source}
-            rows={Math.max(block.endLine - block.startLine + 1, 1)}
-            oninput={(e) => replaceBlock(index, (e.currentTarget as HTMLTextAreaElement).value)}
-            onblur={stopEditing}
-            onkeydown={handleTextareaKeydown}
-          ></textarea>
-        {:else}
-          <button class="preview-shell" onclick={() => setEditing(index)}>
-            <Preview
-              source={block.source}
-              mode={documentMode === "mermaid" ? "mermaid" : "markdown"}
-              currentFilePath={currentFilePath}
-              embedded={true}
-            />
-          </button>
-        {/if}
+        <textarea
+          bind:this={activeTextarea}
+          class="source-editor"
+          placeholder="开始录入新内容..."
+          oninput={(e) => onContentChange?.((e.currentTarget as HTMLTextAreaElement).value)}
+          onkeydown={handleTextareaKeydown}
+        ></textarea>
       </div>
     </div>
-  {/each}
+  {:else}
+    {#each blocks as block, index (block.startOffset)}
+      <div class="live-block" class:editing={editingIndex === index}>
+        <div class="line-gutter" class:module={isModuleBlock(block)}>
+          {#if editingIndex === index}
+            {#each exactLineNumbers(block) as lineNo}
+              <div class="line-no">{lineNo}</div>
+            {/each}
+          {:else if block.startLine === block.endLine}
+            <div class="line-no">{block.startLine}</div>
+          {:else}
+            <div class="line-no">{block.startLine}</div>
+            <div class="line-gap">⋮</div>
+            <div class="line-no">{block.endLine}</div>
+          {/if}
+        </div>
+
+        <div class="block-body">
+          {#if editingIndex === index}
+            <textarea
+              bind:this={activeTextarea}
+              class="source-editor"
+              value={block.source}
+              rows={Math.max(block.endLine - block.startLine + 1, 1)}
+              oninput={(e) => replaceBlock(index, (e.currentTarget as HTMLTextAreaElement).value)}
+              onblur={stopEditing}
+              onkeydown={handleTextareaKeydown}
+            ></textarea>
+          {:else}
+            <button class="preview-shell" onclick={() => setEditing(index)}>
+              <Preview
+                source={block.source}
+                mode={documentMode === "mermaid" ? "mermaid" : "markdown"}
+                currentFilePath={currentFilePath}
+                embedded={true}
+              />
+            </button>
+          {/if}
+        </div>
+      </div>
+    {/each}
+  {/if}
 </div>
 
 <style>
