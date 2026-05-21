@@ -7,7 +7,6 @@
     { value: "source", label: "源码", icon: "📝" },
     { value: "split", label: "分栏", icon: "📄" },
     { value: "preview", label: "预览", icon: "👁️" },
-    { value: "live", label: "即时", icon: "✨" },
   ];
 
   let showExport = $state(false);

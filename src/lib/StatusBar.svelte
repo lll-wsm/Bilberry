@@ -18,7 +18,7 @@
   let charCount = $derived($vaultStore.currentContent.length);
 
   let modeLabel = $derived(
-    ({ split: "分栏", preview: "预览", source: "源码", live: "即时" } as const)[
+    ({ split: "分栏", preview: "预览", source: "源码" } as const)[
       $editorStore.mode
     ] ?? "分栏",
   );

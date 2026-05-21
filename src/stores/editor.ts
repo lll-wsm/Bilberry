@@ -6,7 +6,7 @@ export const pendingNavRange = writable<{anchor: number; head: number} | null>(n
 /// Increment to trigger CodeMirror's find panel in the active editor
 export const triggerFindCount = writable(0);
 
-export type EditorMode = "split" | "preview" | "source" | "live";
+export type EditorMode = "split" | "preview" | "source";
 
 interface EditorState {
   mode: EditorMode;
@@ -16,9 +16,9 @@ interface EditorState {
 
 function createEditorStore() {
   const { subscribe, update, set } = writable<EditorState>({
-    mode: "live",
+    mode: "preview",
     showToolbar: true,
-    markdownMode: "live",
+    markdownMode: "preview",
   });
 
   return {
@@ -50,7 +50,7 @@ function createEditorStore() {
     },
 
     reset() {
-      set({ mode: "live", showToolbar: true, markdownMode: "live" });
+      set({ mode: "preview", showToolbar: true, markdownMode: "preview" });
     },
   };
 }
