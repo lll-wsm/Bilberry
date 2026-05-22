@@ -263,6 +263,18 @@ function applyGlobalColors(colors: {
   );
   const borderDivider = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.12)";
 
+  // Compute premium styles for code blocks and tables dynamic to the active theme colors
+  const codeBg = isDark ? adjustBrightness(bgPrimary, -12) : adjustBrightness(bgPrimary, -6);
+  const codeBorder = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+  const codeInlineBg = isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.04)";
+  const codeInlineColor = isDark ? "#e5c07b" : "#c7254e"; 
+  
+  const tableBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)";
+  const tableHeaderBg = isDark ? adjustBrightness(bgPrimary, -8) : adjustBrightness(bgPrimary, -4);
+  const tableHeaderFg = textNormal;
+  const tableRowBg = bgPrimary;
+  const tableRowStripe = isDark ? adjustBrightness(bgPrimary, -4) : adjustBrightness(bgPrimary, -2);
+
   const style = document.createElement("style");
   style.id = "bilberry-global-theme-override";
   style.textContent = `
@@ -275,6 +287,17 @@ function applyGlobalColors(colors: {
       --border-divider: ${borderDivider};
       --header-bg: ${bgSecondary};
       --header-text: ${textNormal};
+
+      /* Dynamic code and table tokens */
+      --code-bg: ${codeBg};
+      --code-border: ${codeBorder};
+      --code-inline-bg: ${codeInlineBg};
+      --code-inline-color: ${codeInlineColor};
+      --table-border: ${tableBorder};
+      --table-header-bg: ${tableHeaderBg};
+      --table-header-fg: ${tableHeaderFg};
+      --table-row-bg: ${tableRowBg};
+      --table-row-stripe: ${tableRowStripe};
     }
   `;
   document.head.appendChild(style);

@@ -143,6 +143,38 @@
 
   let html = $derived(result?.html ?? "");
 
+  const findFile = (entries: any[], targetPath: string): string | null => {
+    const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
+    
+    for (const entry of entries) {
+      if (!entry.is_dir) {
+        const entryPath = entry.path.toLowerCase();
+        // Exact match check first (for absolute/resolved paths)
+        if (entryPath === targetPath.toLowerCase() || entryPath === (targetPath + ".md").toLowerCase()) {
+          return entry.path;
+        }
+        
+        const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
+        
+        // Match A: Full path ending match (e.g., "folder/file" matches ".../folder/file.md")
+        if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
+          return entry.path;
+        }
+        
+        // Match B: Just filename match (e.g., "file" matches "any/folder/file.md")
+        if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
+          return entry.path;
+        }
+      }
+      
+      if (entry.children) {
+        const found = findFile(entry.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   let previewVisible = $state(false);
   let previewContent = $state("");
   let previewX = $state(0);
@@ -150,12 +182,25 @@
   let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
   async function handleHover(e: MouseEvent) {
-    const link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
+    let link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
     const isOverPopover = (e.target as HTMLElement).closest(".link-preview-popover");
     
+    // Check if it's a standard local link (exclude external protocols)
+    if (!link) {
+      const anchor = (e.target as HTMLElement).closest("a") as HTMLAnchorElement;
+      if (anchor) {
+        const href = anchor.getAttribute("href");
+        if (href && !/^(https?:\/\/|mailto:|tel:|data:|blob:|javascript:)/i.test(href)) {
+          link = anchor;
+        }
+      }
+    }
+
     if (link) {
-      const fileName = link.dataset.target;
-      if (!fileName) return;
+      const targetVal = link.dataset.target || link.getAttribute("href");
+      if (!targetVal) return;
+
+      console.log("[Preview Hover] Detected link hover:", targetVal);
 
       if (hoverTimeout) clearTimeout(hoverTimeout);
       
@@ -163,24 +208,27 @@
       if (previewVisible && Math.abs(link.getBoundingClientRect().left - previewX) < 1) return;
 
       hoverTimeout = setTimeout(async () => {
-        const findFile = (entries: any[], targetPath: string): string | null => {
-          const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
-          for (const entry of entries) {
-            if (!entry.is_dir) {
-              const entryPath = entry.path.toLowerCase();
-              const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
-              if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) return entry.path;
-              if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) return entry.path;
-            }
-            if (entry.children) {
-              const found = findFile(entry.children, targetPath);
-              if (found) return found;
-            }
+        let fileName = decodeURIComponent(targetVal);
+        let fullPath: string | null = null;
+        
+        if (currentFilePath) {
+          try {
+            const absoluteUrl = new URL(targetVal, `file://${currentFilePath}`);
+            const absPath = decodeURIComponent(absoluteUrl.pathname);
+            console.log("[Preview Hover] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
+            fullPath = findFile($vaultStore.fileTree, absPath);
+          } catch (err) {
+            console.error("[Preview Hover] Error resolving path relative to currentFilePath:", err);
           }
-          return null;
-        };
+        }
+        
+        if (!fullPath) {
+          console.log("[Preview Hover] File not found by relative path, falling back to name search:", fileName);
+          fullPath = findFile($vaultStore.fileTree, fileName);
+        }
 
-        const fullPath = findFile($vaultStore.fileTree, fileName);
+        console.log("[Preview Hover] findFile result fullPath:", fullPath);
+
         if (fullPath) {
           try {
             const content = await invoke<string>("read_note", { path: fullPath, encoding: "UTF-8" });
@@ -201,7 +249,7 @@
 
             previewVisible = true;
           } catch (err) {
-            console.error("Failed to load preview:", err);
+            console.error("[Preview Hover] Failed to load preview content:", err);
           }
         }
       }, 400);
@@ -209,7 +257,7 @@
       if (hoverTimeout) clearTimeout(hoverTimeout);
       hoverTimeout = setTimeout(() => {
         const popover = document.querySelector(".link-preview-popover:hover");
-        const currentLink = document.querySelector(".wikilink:hover");
+        const currentLink = document.querySelector(".wikilink:hover") || document.querySelector("a:hover");
         if (!popover && !currentLink) {
           previewVisible = false;
         }
@@ -219,7 +267,11 @@
 
   function hidePreview(e: MouseEvent) {
     const relatedTarget = e.relatedTarget as HTMLElement;
-    if (relatedTarget?.closest(".link-preview-popover") || relatedTarget?.closest(".wikilink")) return;
+    if (
+      relatedTarget?.closest(".link-preview-popover") || 
+      relatedTarget?.closest(".wikilink") || 
+      relatedTarget?.closest("a")
+    ) return;
 
     if (hoverTimeout) clearTimeout(hoverTimeout);
     previewVisible = false;
@@ -252,43 +304,51 @@
       const fileName = link.dataset.target;
       if (!fileName) return;
 
-      const findFile = (entries: any[], targetPath: string): string | null => {
-        // Normalize target: remove .md if present, handle slashes
-        const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
-        
-        for (const entry of entries) {
-          // 1. Check if the entry is a file
-          if (!entry.is_dir) {
-            const entryPath = entry.path.toLowerCase();
-            const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
-            
-            // Match A: Full path ending match (e.g., "folder/file" matches ".../folder/file.md")
-            if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
-              return entry.path;
-            }
-            
-            // Match B: Just filename match (e.g., "file" matches "any/folder/file.md")
-            if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
-              return entry.path;
-            }
-          }
-          
-          // 2. Recursive search in directories
-          if (entry.children) {
-            const found = findFile(entry.children, targetPath);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
+      console.log("[Preview Click] Wikilink clicked:", fileName);
       const fullPath = findFile($vaultStore.fileTree, fileName);
+      console.log("[Preview Click] findFile result:", fullPath);
       if (fullPath) vaultStore.openNote(fullPath);
     } else if (hashtag) {
       e.preventDefault();
       const tag = hashtag.dataset.tag;
       if (tag) {
         vaultStore.search(`#${tag}`);
+      }
+    } else {
+      // Handle standard local links
+      const anchor = (e.target as HTMLElement).closest("a") as HTMLAnchorElement;
+      if (anchor) {
+        const href = anchor.getAttribute("href");
+        if (href && !/^(https?:\/\/|mailto:|tel:|data:|blob:|javascript:)/i.test(href)) {
+          e.preventDefault();
+          
+          let resolvedPath = decodeURIComponent(href);
+          console.log("[Preview Click] Local standard link clicked:", resolvedPath);
+          let fullPath: string | null = null;
+          
+          if (currentFilePath) {
+            try {
+              const absoluteUrl = new URL(href, `file://${currentFilePath}`);
+              const absPath = decodeURIComponent(absoluteUrl.pathname);
+              console.log("[Preview Click] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
+              fullPath = findFile($vaultStore.fileTree, absPath);
+            } catch (err) {
+              console.error("[Preview Click] Error resolving path relative to currentFilePath:", err);
+            }
+          }
+          
+          if (!fullPath) {
+            console.log("[Preview Click] File not found by relative path, falling back to name search:", resolvedPath);
+            fullPath = findFile($vaultStore.fileTree, resolvedPath);
+          }
+
+          console.log("[Preview Click] Final matched fullPath:", fullPath);
+          if (fullPath) {
+            vaultStore.openNote(fullPath);
+          } else {
+            console.warn("[Preview Click] Could not find note path in vault:", resolvedPath);
+          }
+        }
       }
     }
   }
@@ -483,5 +543,82 @@
     white-space: pre-wrap;
     word-break: break-word;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  /* Table & Code Block Premium Styling Overrides */
+  .preview :global(.markdown-body code) {
+    font-family: var(--font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+    font-size: 0.88em;
+    padding: 0.2em 0.45em;
+    border-radius: 6px;
+    background-color: var(--code-inline-bg);
+    color: var(--code-inline-color);
+    border: 1px solid var(--code-border);
+  }
+
+  .preview :global(.markdown-body pre code) {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    border: none;
+    font-size: inherit;
+  }
+
+  .preview :global(.markdown-body pre) {
+    margin: 1.25em 0;
+    padding: 16px 20px;
+    background-color: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+
+  .preview :global(.markdown-body table) {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1.5em 0;
+    border: 1px solid var(--table-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .preview :global(.markdown-body th) {
+    background-color: var(--table-header-bg);
+    color: var(--table-header-fg);
+    font-weight: 600;
+    font-size: 0.92em;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--table-border);
+    border-right: 1px solid var(--table-border);
+  }
+
+  .preview :global(.markdown-body th:last-child) {
+    border-right: none;
+  }
+
+  .preview :global(.markdown-body td) {
+    padding: 10px 14px;
+    font-size: 0.92em;
+    color: var(--text-normal);
+    background-color: var(--table-row-bg);
+    border-bottom: 1px solid var(--table-border);
+    border-right: 1px solid var(--table-border);
+  }
+
+  .preview :global(.markdown-body td:last-child) {
+    border-right: none;
+  }
+
+  .preview :global(.markdown-body tr:last-child td) {
+    border-bottom: none;
+  }
+
+  .preview :global(.markdown-body tr:nth-child(even) td) {
+    background-color: var(--table-row-stripe);
+  }
+
+  .preview :global(.markdown-body tr:hover td) {
+    background-color: var(--bg-hover) !important;
   }
 </style>

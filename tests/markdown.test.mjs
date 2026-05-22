@@ -150,3 +150,32 @@ test("keeps fenced mermaid blocks intact for live editing", () => {
   assert.equal(blocks[1].startLine, 3);
   assert.equal(blocks[1].endLine, 6);
 });
+
+test("decodes double-escaped HTML entities in code blocks", () => {
+  const result = renderMarkdown(
+    [
+      "```python",
+      "chapters = sorted(Path(&#39;筑仙/正式章节&#39;).glob(&#39;第*章 *.md&#39;), key=lambda s: int(re.search(r&#39;第(\\d+)章&#39;, s.name).group(1)))",
+      "```"
+    ].join("\n")
+  );
+  
+  assert.match(result.html, /Path\(&#39;筑仙\/正式章节&#39;\)/);
+  assert.match(result.html, /group\(1\)/);
+  assert.doesNotMatch(result.html, /&amp;#39;/);
+});
+
+test("handles dollar signs in code blocks without corruption", () => {
+  const result = renderMarkdown(
+    [
+      "```javascript",
+      "const $ = jQuery;",
+      "let x = $state(0);",
+      "```"
+    ].join("\n")
+  );
+  
+  assert.match(result.html, /const \$ = jQuery;/);
+  assert.match(result.html, /let x = \$state\(0\);/);
+});
+

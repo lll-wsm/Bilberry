@@ -27,19 +27,16 @@
 
     children.forEach((child) => {
       const tag = child.tagName.toLowerCase();
-      if (["h1", "h2", "h3", "h4"].includes(tag)) {
+      if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
         currentDetails = document.createElement("details");
+        const level = tag.substring(1);
+        currentDetails.setAttribute("data-level", level);
+        currentDetails.className = "preview-details";
+
         const summary = document.createElement("summary");
         summary.innerHTML = child.innerHTML;
         summary.className = "preview-summary";
-        
-        // Set level for hierarchical styling
-        const level = tag.substring(1);
         summary.setAttribute("data-level", level);
-
-        // Copy color if it's a heading
-        const color = window.getComputedStyle(child).color;
-        if (color) summary.style.setProperty("--summary-color", color);
 
         currentDetails.appendChild(summary);
         newContainer.appendChild(currentDetails);
@@ -98,23 +95,53 @@
     font-size: 13px;
   }
 
+  .preview-content :global(details) {
+    margin-bottom: 4px;
+  }
+
+  .preview-content :global(details[data-level="1"]) { margin-left: 0; }
+  .preview-content :global(details[data-level="2"]) { margin-left: 14px; }
+  .preview-content :global(details[data-level="3"]) { margin-left: 28px; }
+  .preview-content :global(details[data-level="4"]) { margin-left: 42px; }
+  .preview-content :global(details[data-level="5"]) { margin-left: 56px; }
+  .preview-content :global(details[data-level="6"]) { margin-left: 70px; }
+
   :global(.preview-summary) {
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 5px 8px;
+    border-radius: 5px;
     list-style: none;
     font-weight: 600;
-    color: var(--summary-color, var(--interactive-accent));
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: background 0.1s;
+    transition: background 0.1s, color 0.1s;
   }
 
-  :global(.preview-summary[data-level="1"]) { font-size: 1.35em; border-bottom: 1px solid var(--border-divider); margin-bottom: 6px; }
-  :global(.preview-summary[data-level="2"]) { font-size: 1.15em; }
-  :global(.preview-summary[data-level="3"]) { font-size: 1.05em; color: var(--text-normal); }
-  :global(.preview-summary[data-level="4"]) { font-size: 0.95em; color: var(--text-muted); }
+  :global(.preview-summary[data-level="1"]) {
+    font-size: 1.25em;
+    border-bottom: 1px solid var(--border-divider);
+    margin-bottom: 4px;
+    color: var(--interactive-accent);
+  }
+
+  :global(.preview-summary[data-level="2"]) {
+    font-size: 1.1em;
+    color: var(--text-normal);
+  }
+
+  :global(.preview-summary[data-level="3"]) {
+    font-size: 1.0em;
+    color: var(--text-normal);
+    opacity: 0.9;
+  }
+
+  :global(.preview-summary[data-level="4"]),
+  :global(.preview-summary[data-level="5"]),
+  :global(.preview-summary[data-level="6"]) {
+    font-size: 0.95em;
+    color: var(--text-muted);
+  }
 
   :global(.preview-summary::-webkit-details-marker) {
     display: none;
@@ -125,6 +152,7 @@
     font-size: 8px;
     transition: transform 0.2s;
     color: var(--text-muted);
+    opacity: 0.7;
   }
 
   :global(details[open] > .preview-summary::before) {
@@ -135,13 +163,13 @@
     background: var(--bg-hover);
   }
 
-  :global(details) {
-    margin-bottom: 2px;
-  }
-
   :global(details > *:not(summary)) {
-    padding-left: 20px;
+    padding-left: 16px;
+    margin-left: 6px;
+    border-left: 2px solid var(--border-divider);
     opacity: 0.9;
+    margin-top: 4px;
+    margin-bottom: 8px;
   }
 
   @keyframes fade-in {

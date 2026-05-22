@@ -276,18 +276,14 @@ function renderMath(html: string, blockMaths: string[]): string {
   for (let i = 0; i < blockMaths.length; i++) {
     const placeholder = `${BLOCK_MATH_PLACEHOLDER_PREFIX}${i}\x00`;
     try {
-      result = result.replace(
-        placeholder,
-        katex.renderToString(blockMaths[i], {
-          displayMode: true,
-          throwOnError: false,
-        }),
-      );
+      const mathHtml = katex.renderToString(blockMaths[i], {
+        displayMode: true,
+        throwOnError: false,
+      });
+      result = result.replace(placeholder, () => mathHtml);
     } catch {
-      result = result.replace(
-        placeholder,
-        `<span class="katex-error">${blockMaths[i]}</span>`,
-      );
+      const errHtml = `<span class="katex-error">${blockMaths[i]}</span>`;
+      result = result.replace(placeholder, () => errHtml);
     }
   }
 
@@ -332,13 +328,13 @@ function renderWikiLinks(html: string): string {
 
 function renderHashtags(html: string): string {
   // 1. Match HTML tags (like <a>...</a> or <img>) to skip them.
-  // 2. Use a lookbehind and lookahead to match #tag only as a whole word.
-  // This version is much safer as it won't touch text inside attribute values.
-  const regex = /(<a\b[^>]*>[\s\S]*?<\/a>)|(<[^>]+>)|(?<=[^a-zA-Z0-9_\u4e00-\u9fa5]|^)#([a-zA-Z0-9_\u4e00-\u9fa5]{1,30})(?![a-zA-Z0-9_\u4e00-\u9fa5])/g;
+  // 2. Match HTML entities (like &#39; or &amp;) to avoid matching their '#' as a hashtag.
+  // 3. Use a lookbehind and lookahead to match #tag only as a whole word.
+  const regex = /(<a\b[^>]*>[\s\S]*?<\/a>)|(<[^>]+>)|(&#[0-9]+;)|(&#[xX][0-9a-fA-F]+;)|(&[a-zA-Z0-9]+;)|(?<=[^a-zA-Z0-9_\u4e00-\u9fa5]|^)#([a-zA-Z0-9_\u4e00-\u9fa5]{1,30})(?![a-zA-Z0-9_\u4e00-\u9fa5])/g;
   
-  return html.replace(regex, (match, anchor, tag, hash) => {
-    // If we matched an <a> tag or any other HTML tag, return it unchanged.
-    if (anchor || tag) return match;
+  return html.replace(regex, (match, anchor, tag, numEntity, hexEntity, namedEntity, hash) => {
+    // If we matched an HTML tag, anchor, or HTML entity, return it unchanged.
+    if (anchor || tag || numEntity || hexEntity || namedEntity) return match;
     
     // Skip if it looks like a hex color (3 or 6 hex digits)
     if (/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(hash)) return match;
@@ -412,8 +408,20 @@ export function renderMarkdown(src: string): RenderResult {
   // Parse markdown
   const rawHtml = marked.parse(preprocessed) as string;
 
+  // Extract <pre> and <code> blocks to placeholders so that math, wiki-links, and hashtags
+  // are never processed inside literal code.
+  const codeBlocks: string[] = [];
+  const placeholderPrefix = "\x00CODE_BLOCK_";
+  const codeRegex = /(<pre[\s\S]*?<\/pre>)|(<code[\s\S]*?<\/code>)/g;
+  
+  const htmlWithPlaceholders = rawHtml.replace(codeRegex, (match) => {
+    const placeholder = `${placeholderPrefix}${codeBlocks.length}\x00`;
+    codeBlocks.push(match);
+    return placeholder;
+  });
+
   // Render KaTeX
-  const withMath = renderMath(rawHtml, blockMaths);
+  const withMath = renderMath(htmlWithPlaceholders, blockMaths);
 
   // Render WikiLinks
   const withWiki = renderWikiLinks(withMath);
@@ -421,8 +429,20 @@ export function renderMarkdown(src: string): RenderResult {
   // Render Hashtags
   const withTags = renderHashtags(withWiki);
 
+  // Restore code blocks
+  let finalHtml = withTags;
+  for (let i = 0; i < codeBlocks.length; i++) {
+    const placeholder = `${placeholderPrefix}${i}\x00`;
+    // Decode double-escaped HTML entities in code blocks to show normal characters (like ', ", &, <, >)
+    const decodedCodeBlock = codeBlocks[i].replace(
+      /&amp;((?:#[0-9]+|#[xX][0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);)/g,
+      '&$1'
+    );
+    finalHtml = finalHtml.replace(placeholder, () => decodedCodeBlock);
+  }
+
   // Restore escaped dollar signs
-  const finalHtml = withTags.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), "$");
+  finalHtml = finalHtml.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), () => "$");
 
   return {
     html: finalHtml,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { vaultStore, type FileEntry } from "../../stores/vault";
-  import { contextMenu } from "../../stores/contextMenu";
+  import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
   import { fileClipboard } from "../../stores/fileClipboard";
   import { fileTreePending } from "../../stores/fileTreePending";
   import { expandToPaths } from "../../stores/expandToPaths";
@@ -260,7 +260,7 @@
   function onDirContextMenu(e: MouseEvent, entry: FileEntry, isRootItem = false) {
     const clipEntry = get(fileClipboard);
 
-    const items = [
+    const items: ContextMenuItem[] = [
       { label: "刷新", action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
       { label: "新建文件", action: () => startNewFile(entry.path) },

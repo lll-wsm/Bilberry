@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+import { onMount, untrack } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, Compartment } from "@codemirror/state";
   import { openSearchPanel } from "@codemirror/search";
@@ -10,6 +10,8 @@
   import { pendingNavRange, triggerFindCount } from "../../stores/editor";
   import { vaultStore } from "../../stores/vault";
   import type { Extension } from "@codemirror/state";
+  import LinkPreview from "../ui/LinkPreview.svelte";
+  import { invoke } from "@tauri-apps/api/core";
 
   let { content = "", readonly = false, onContentChange, onScrollChange, initialScrollRatio = null }: {
     content?: string;
@@ -26,6 +28,102 @@
   let scrollerEl: HTMLElement | null = null;
   let hasAppliedInitialScroll = false;
   let lastAppliedScrollRatio: number | null = null;
+
+  // Link preview and navigation state
+  let previewVisible = $state(false);
+  let previewContent = $state("");
+  let previewX = $state(0);
+  let previewY = $state(0);
+  let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+  let hoveredLinkRange: { start: number; end: number } | null = null;
+
+  function clearHover() {
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = null;
+    }
+    setTimeout(() => {
+      const popover = document.querySelector(".link-preview-popover:hover");
+      if (!popover) {
+        previewVisible = false;
+        hoveredLinkRange = null;
+      }
+    }, 100);
+  }
+
+  const findFile = (entries: any[], targetPath: string): string | null => {
+    const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
+    
+    for (const entry of entries) {
+      if (!entry.is_dir) {
+        const entryPath = entry.path.toLowerCase();
+        if (entryPath === targetPath.toLowerCase() || entryPath === (targetPath + ".md").toLowerCase()) {
+          return entry.path;
+        }
+        
+        const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
+        
+        if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
+          return entry.path;
+        }
+        
+        if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
+          return entry.path;
+        }
+      }
+      
+      if (entry.children) {
+        const found = findFile(entry.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  interface LinkMatch {
+    type: "wikilink" | "markdown";
+    target: string;
+    start: number;
+    end: number;
+  }
+
+  function findLinkAtPosition(text: string, pos: number): LinkMatch | null {
+    // 1. Wikilinks [[target]] or [[target|alias]]
+    const wikilinkRegex = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+    let match;
+    while ((match = wikilinkRegex.exec(text)) !== null) {
+      const start = match.index;
+      const end = wikilinkRegex.lastIndex;
+      if (pos >= start && pos < end) {
+        return {
+          type: "wikilink",
+          target: match[1].trim(),
+          start,
+          end
+        };
+      }
+    }
+
+    // 2. Markdown links: [text](target)
+    const mdLinkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;
+    while ((match = mdLinkRegex.exec(text)) !== null) {
+      const start = match.index;
+      const end = mdLinkRegex.lastIndex;
+      if (pos >= start && pos < end) {
+        const target = match[2].trim();
+        if (!/^(https?:\/\/|mailto:|tel:|data:|blob:|javascript:)/i.test(target)) {
+          return {
+            type: "markdown",
+            target,
+            start,
+            end
+          };
+        }
+      }
+    }
+
+    return null;
+  }
 
   function scrollEditorToRatio(ratio: number | null | undefined) {
     if (!scrollerEl || ratio == null) return;
@@ -105,6 +203,180 @@
     hasAppliedInitialScroll = true;
     handleScroll();
 
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!view || isDestroyed) return;
+
+      const hasModifier = e.metaKey || e.ctrlKey;
+      if (!hasModifier) {
+        if (scrollerEl) scrollerEl.style.cursor = "";
+        clearHover();
+        return;
+      }
+
+      // Convert coordinates to document position
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      if (pos === null) {
+        if (scrollerEl) scrollerEl.style.cursor = "";
+        clearHover();
+        return;
+      }
+
+      // Get line details
+      let line;
+      try {
+        line = view.state.doc.lineAt(pos);
+      } catch (err) {
+        if (scrollerEl) scrollerEl.style.cursor = "";
+        clearHover();
+        return;
+      }
+
+      const relativePos = pos - line.from;
+      const link = findLinkAtPosition(line.text, relativePos);
+
+      if (link) {
+        // Change cursor to pointer
+        if (scrollerEl) scrollerEl.style.cursor = "pointer";
+
+        // Calculate absolute range in document
+        const startDocPos = line.from + link.start;
+        const endDocPos = line.from + link.end;
+
+        // Check if we are still hovering the same link
+        if (hoveredLinkRange && hoveredLinkRange.start === startDocPos && hoveredLinkRange.end === endDocPos) {
+          return;
+        }
+
+        hoveredLinkRange = { start: startDocPos, end: endDocPos };
+
+        if (hoverTimeout) clearTimeout(hoverTimeout);
+
+        hoverTimeout = setTimeout(async () => {
+          const targetVal = link.target;
+          console.log("[Editor Hover] Detected link hover:", targetVal);
+
+          let fileName = decodeURIComponent(targetVal);
+          let fullPath: string | null = null;
+          
+          if (contentPath) {
+            try {
+              const absoluteUrl = new URL(targetVal, `file://${contentPath}`);
+              const absPath = decodeURIComponent(absoluteUrl.pathname);
+              console.log("[Editor Hover] contentPath:", contentPath, "-> Resolving relative path:", absPath);
+              fullPath = findFile($vaultStore.fileTree, absPath);
+            } catch (err) {
+              console.error("[Editor Hover] Error resolving path relative to contentPath:", err);
+            }
+          }
+          
+          if (!fullPath) {
+            console.log("[Editor Hover] File not found by relative path, falling back to name search:", fileName);
+            fullPath = findFile($vaultStore.fileTree, fileName);
+          }
+
+          console.log("[Editor Hover] findFile result fullPath:", fullPath);
+
+          if (fullPath) {
+            try {
+              const content = await invoke<string>("read_note", { path: fullPath, encoding: "UTF-8" });
+              previewContent = content; // Show all content
+              
+              const startCoords = view.coordsAtPos(startDocPos);
+              if (startCoords) {
+                previewX = startCoords.left;
+                previewY = startCoords.bottom + 8;
+                
+                // Adjust X if too close to right edge
+                if (previewX + 420 > window.innerWidth) {
+                  previewX = window.innerWidth - 440;
+                }
+                // Adjust Y if too close to bottom edge
+                if (previewY + 350 > window.innerHeight) {
+                  previewY = startCoords.top - 360;
+                }
+                
+                previewVisible = true;
+              }
+            } catch (err) {
+              console.error("[Editor Hover] Failed to load preview content:", err);
+            }
+          }
+        }, 400);
+      } else {
+        if (scrollerEl) scrollerEl.style.cursor = "";
+        clearHover();
+      }
+    };
+
+    const handleMouseClick = (e: MouseEvent) => {
+      if (!view || isDestroyed) return;
+
+      const hasModifier = e.metaKey || e.ctrlKey;
+      if (!hasModifier) return;
+
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      if (pos === null) return;
+
+      let line;
+      try {
+        line = view.state.doc.lineAt(pos);
+      } catch (err) {
+        return;
+      }
+
+      const relativePos = pos - line.from;
+      const link = findLinkAtPosition(line.text, relativePos);
+
+      if (link) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const targetVal = link.target;
+        let fileName = decodeURIComponent(targetVal);
+        let fullPath: string | null = null;
+        
+        if (contentPath) {
+          try {
+            const absoluteUrl = new URL(targetVal, `file://${contentPath}`);
+            const absPath = decodeURIComponent(absoluteUrl.pathname);
+            console.log("[Editor Click] contentPath:", contentPath, "-> Resolving relative path:", absPath);
+            fullPath = findFile($vaultStore.fileTree, absPath);
+          } catch (err) {
+            console.error("[Editor Click] Error resolving path relative to contentPath:", err);
+          }
+        }
+        
+        if (!fullPath) {
+          console.log("[Editor Click] File not found by relative path, falling back to name search:", fileName);
+          fullPath = findFile($vaultStore.fileTree, fileName);
+        }
+
+        console.log("[Editor Click] Final matched fullPath:", fullPath);
+        if (fullPath) {
+          vaultStore.openNote(fullPath);
+        } else {
+          console.warn("[Editor Click] Could not find note path in vault:", targetVal);
+        }
+      }
+    };
+
+    const handleMouseLeave = () => {
+      if (scrollerEl) scrollerEl.style.cursor = "";
+      clearHover();
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta") {
+        if (scrollerEl) scrollerEl.style.cursor = "";
+        clearHover();
+      }
+    };
+
+    scrollerEl?.addEventListener("mousemove", handleMouseMove);
+    scrollerEl?.addEventListener("click", handleMouseClick, true); // Intercept during capture phase
+    scrollerEl?.addEventListener("mouseleave", handleMouseLeave);
+    window.addEventListener("keyup", handleKeyUp);
+
     // Reactive theme switch
     const unsubTheme = theme.subscribe(($theme) => {
       try {
@@ -118,7 +390,11 @@
 
     return () => {
       unsubTheme();
+      window.removeEventListener("keyup", handleKeyUp);
       scrollerEl?.removeEventListener("scroll", handleScroll);
+      scrollerEl?.removeEventListener("mousemove", handleMouseMove);
+      scrollerEl?.removeEventListener("click", handleMouseClick, true);
+      scrollerEl?.removeEventListener("mouseleave", handleMouseLeave);
       scrollerEl = null;
       isDestroyed = true;
       view.destroy();
@@ -171,15 +447,33 @@
   });
 </script>
 
-<div
-  bind:this={container}
-  class="editor-container"
-  style:font-size="{$settingsStore.fontSize}px"
-  style:font-family={$settingsStore.fontFamily}
-  style:line-height={$settingsStore.lineHeight}
-></div>
+<div class="editor-wrapper">
+  <div
+    bind:this={container}
+    class="editor-container"
+    style:font-size="{$settingsStore.fontSize}px"
+    style:font-family={$settingsStore.fontFamily}
+    style:line-height={$settingsStore.lineHeight}
+  ></div>
+
+  <LinkPreview 
+    visible={previewVisible} 
+    content={previewContent} 
+    x={previewX} 
+    y={previewY} 
+  />
+</div>
 
 <style>
+  .editor-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+  }
+
   .editor-container {
     flex: 1;
     overflow: hidden;
