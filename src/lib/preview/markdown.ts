@@ -1,11 +1,40 @@
 import { marked } from "marked";
 import katex from "katex";
+import hljs from "highlight.js";
 
 // Configure marked
 marked.setOptions({
   breaks: true,
   gfm: true,
 });
+
+const renderer = {
+  code(token: any) {
+    const text = token.text;
+    const lang = (token.lang || "").match(/^\S*/)?.[0] || "";
+    let highlighted: string;
+
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        highlighted = hljs.highlight(text, { language: lang }).value;
+      } catch {
+        highlighted = escapeHtml(text);
+      }
+    } else {
+      try {
+        highlighted = hljs.highlightAuto(text).value;
+      } catch {
+        highlighted = escapeHtml(text);
+      }
+    }
+
+    const classAttr = lang ? ` class="language-${lang} hljs"` : ' class="hljs"';
+    return `<pre><code${classAttr}>${highlighted}</code></pre>`;
+  }
+};
+
+marked.use({ renderer });
+
 
 const DOLLAR_PLACEHOLDER = "\x00DOLLAR\x00";
 const BLOCK_MATH_PLACEHOLDER_PREFIX = "\x00BLOCK_MATH_";

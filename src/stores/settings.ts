@@ -12,6 +12,7 @@ export interface Settings {
   sidebarWidth: number;
   previewTheme: string;
   theme: "light" | "dark" | "system";
+  showHiddenFiles: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -23,6 +24,7 @@ const defaultSettings: Settings = {
   sidebarWidth: 240,
   previewTheme: "system",
   theme: "system",
+  showHiddenFiles: true,
 };
 
 function createSettingsStore() {

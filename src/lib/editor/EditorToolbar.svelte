@@ -10,7 +10,7 @@
   ];
 
   let showExport = $state(false);
-  let expanded = $state(false);
+  let expanded = $state(true);
 </script>
 
 <div class="right-toolbar" class:expanded>

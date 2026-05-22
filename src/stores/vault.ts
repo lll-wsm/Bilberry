@@ -5,6 +5,7 @@ import { getEncoding, setEncoding } from "./fileEncodings";
 import { addToRecent } from "./vaultHistory";
 import { loadSession, saveSession, type SessionData } from "./session";
 import { expandToPaths } from "./expandToPaths";
+import { settingsStore } from "./settings";
 
 export interface FileEntry {
   path: string;
@@ -130,7 +131,8 @@ function createVaultStore() {
       update((s) => ({ ...s, loading: true }));
       try {
         const vault = await invoke<Vault>("open_vault", { path });
-        const fileTree = await invoke<FileEntry[]>("get_file_tree", { path });
+        const showHidden = get(settingsStore).showHiddenFiles;
+        const fileTree = await invoke<FileEntry[]>("get_file_tree", { path, showHidden });
         const session = await loadSession(path);
 
         update(() => ({
@@ -183,7 +185,8 @@ function createVaultStore() {
       update((s) => ({ ...s, loading: true }));
       try {
         const vault = await invoke<Vault>("create_vault", { path });
-        const fileTree = await invoke<FileEntry[]>("get_file_tree", { path });
+        const showHidden = get(settingsStore).showHiddenFiles;
+        const fileTree = await invoke<FileEntry[]>("get_file_tree", { path, showHidden });
         const newState: VaultState = {
           ...initialState,
           vault,
@@ -211,8 +214,10 @@ function createVaultStore() {
         return { ...s, loading: true };
       });
       if (!currentPath) return;
+      const showHidden = get(settingsStore).showHiddenFiles;
       const fileTree = await invoke<FileEntry[]>("get_file_tree", {
         path: currentPath,
+        showHidden,
       });
       update((s) => ({ ...s, fileTree, loading: false }));
     },
@@ -594,4 +599,18 @@ export const currentFileIsMarkdown = derived(vaultStore, ($v) => isMarkdownPath(
 export const currentFileIsMermaid = derived(vaultStore, ($v) => isMermaidPath($v.currentFilePath));
 export const currentFileSupportsPreview = derived(vaultStore, ($v) => isPreviewableTextPath($v.currentFilePath));
 export const currentFileIsImage = derived(vaultStore, ($v) => isImagePath($v.currentFilePath));
-;
+
+// Subscribe to settings changes to refresh file tree when showHiddenFiles changes
+let lastShowHidden: boolean | undefined;
+settingsStore.subscribe(($settings) => {
+  if ($settings) {
+    const showHidden = $settings.showHiddenFiles;
+    if (lastShowHidden !== undefined && lastShowHidden !== showHidden) {
+      const state = get(vaultStore);
+      if (state.vault) {
+        vaultStore.refreshFileTree();
+      }
+    }
+    lastShowHidden = showHidden;
+  }
+});

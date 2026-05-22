@@ -1,7 +1,7 @@
 use std::path::Path;
 use crate::vault::FileEntry;
 
-pub fn scan_directory(path: &str) -> Result<Vec<FileEntry>, String> {
+pub fn scan_directory(path: &str, show_hidden: bool) -> Result<Vec<FileEntry>, String> {
     let dir = Path::new(path);
     if !dir.is_dir() {
         return Err(format!("Not a directory: {}", path));
@@ -12,8 +12,12 @@ pub fn scan_directory(path: &str) -> Result<Vec<FileEntry>, String> {
         .map_err(|e| format!("Failed to read directory: {}", e))?
         .filter_map(|e| e.ok())
         .filter(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            !name.starts_with('.')
+            if show_hidden {
+                true
+            } else {
+                let name = e.file_name().to_string_lossy().to_string();
+                !name.starts_with('.')
+            }
         })
         .collect();
 
@@ -29,7 +33,7 @@ pub fn scan_directory(path: &str) -> Result<Vec<FileEntry>, String> {
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
 
         if is_dir {
-            let children = scan_directory(&path.to_string_lossy()).unwrap_or_default();
+            let children = scan_directory(&path.to_string_lossy(), show_hidden).unwrap_or_default();
             let mut fe = FileEntry::new(path.to_string_lossy().to_string(), name, true);
             fe.children = Some(children);
             entries.push(fe);

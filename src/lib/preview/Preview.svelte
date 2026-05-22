@@ -564,6 +564,56 @@
     font-size: inherit;
   }
 
+  .preview :global(.markdown-body .hljs-keyword),
+  .preview :global(.markdown-body .hljs-selector-tag) {
+    color: var(--code-keyword);
+    font-weight: 600;
+  }
+  .preview :global(.markdown-body .hljs-string),
+  .preview :global(.markdown-body .hljs-literal),
+  .preview :global(.markdown-body .hljs-type),
+  .preview :global(.markdown-body .hljs-addition) {
+    color: var(--code-string);
+  }
+  .preview :global(.markdown-body .hljs-number) {
+    color: var(--code-number);
+  }
+  .preview :global(.markdown-body .hljs-comment),
+  .preview :global(.markdown-body .hljs-quote) {
+    color: var(--code-comment);
+    font-style: italic;
+  }
+  .preview :global(.markdown-body .hljs-title),
+  .preview :global(.markdown-body .hljs-section),
+  .preview :global(.markdown-body .hljs-function) {
+    color: var(--code-function);
+  }
+  .preview :global(.markdown-body .hljs-built_in),
+  .preview :global(.markdown-body .hljs-class .hljs-title) {
+    color: var(--code-builtin);
+  }
+  .preview :global(.markdown-body .hljs-variable),
+  .preview :global(.markdown-body .hljs-template-variable),
+  .preview :global(.markdown-body .hljs-attribute) {
+    color: var(--code-variable);
+  }
+  .preview :global(.markdown-body .hljs-attr) {
+    color: var(--code-attr);
+  }
+  .preview :global(.markdown-body .hljs-tag) {
+    color: var(--code-tag);
+  }
+  .preview :global(.markdown-body .hljs-name) {
+    color: var(--code-tag);
+    font-weight: 600;
+  }
+  .preview :global(.markdown-body .hljs-emphasis) {
+    font-style: italic;
+  }
+  .preview :global(.markdown-body .hljs-strong) {
+    font-weight: bold;
+  }
+
   .preview :global(.markdown-body pre) {
     margin: 1.25em 0;
     padding: 16px 20px;

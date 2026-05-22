@@ -8,11 +8,13 @@
   let lineHeight = $state($settingsStore.lineHeight);
   let autoSaveDelay = $state($settingsStore.autoSaveDelay);
   let previewTheme = $state($settingsStore.previewTheme);
+  let showHiddenFiles = $state($settingsStore.showHiddenFiles);
 
   function save() {
     settingsStore.updateSetting("fontSize", fontSize);
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
+    settingsStore.updateSetting("showHiddenFiles", showHiddenFiles);
     
     // Logic: if previewTheme is 'system', app base theme is also 'system'.
     // Otherwise, app base theme matches the preview theme's mode.
@@ -106,6 +108,16 @@
           />
           <span class="value">{autoSaveDelay}ms</span>
         </div>
+      </div>
+
+      <div class="field">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            bind:checked={showHiddenFiles}
+          />
+          显示隐藏文件或目录 (默认显示)
+        </label>
       </div>
 
       <div class="actions">
@@ -218,5 +230,25 @@
 
   .btn.primary:hover {
     opacity: 0.9;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    margin-top: 12px;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--interactive-accent);
   }
 </style>

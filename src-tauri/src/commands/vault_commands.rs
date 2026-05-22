@@ -13,6 +13,6 @@ pub fn create_vault(path: String) -> Result<Vault, String> {
 }
 
 #[tauri::command]
-pub fn get_file_tree(path: String) -> Result<Vec<crate::vault::FileEntry>, String> {
-    scan_directory(&path)
+pub fn get_file_tree(path: String, show_hidden: Option<bool>) -> Result<Vec<crate::vault::FileEntry>, String> {
+    scan_directory(&path, show_hidden.unwrap_or(true))
 }

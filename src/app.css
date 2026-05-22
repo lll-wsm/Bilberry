@@ -17,6 +17,18 @@
   /* Header specific */
   --header-bg: var(--bg-secondary);
   --header-text: var(--text-normal);
+
+  /* Syntax Highlighting Light */
+  --code-keyword: #d73a49;
+  --code-string: #032f62;
+  --code-number: #005cc5;
+  --code-comment: #6a737d;
+  --code-function: #6f42c1;
+  --code-title: #6f42c1;
+  --code-builtin: #e36209;
+  --code-variable: #24292e;
+  --code-attr: #005cc5;
+  --code-tag: #22863a;
 }
 
 .dark {
@@ -32,6 +44,18 @@
 
   --header-bg: var(--bg-secondary);
   --header-text: var(--text-normal);
+
+  /* Syntax Highlighting Dark */
+  --code-keyword: #c678dd;
+  --code-string: #98c379;
+  --code-number: #d19a66;
+  --code-comment: #5c6370;
+  --code-function: #61afef;
+  --code-title: #61afef;
+  --code-builtin: #e5c07b;
+  --code-variable: #abb2bf;
+  --code-attr: #d19a66;
+  --code-tag: #e06c75;
 }
 
 body {
