@@ -5,13 +5,26 @@
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
 
   let fontSize = $state($settingsStore.fontSize);
+  let fontFamily = $state($settingsStore.fontFamily);
   let lineHeight = $state($settingsStore.lineHeight);
   let autoSaveDelay = $state($settingsStore.autoSaveDelay);
   let previewTheme = $state($settingsStore.previewTheme);
   let showHiddenFiles = $state($settingsStore.showHiddenFiles);
 
+  $effect(() => {
+    if (show) {
+      fontSize = $settingsStore.fontSize;
+      fontFamily = $settingsStore.fontFamily;
+      lineHeight = $settingsStore.lineHeight;
+      autoSaveDelay = $settingsStore.autoSaveDelay;
+      previewTheme = $settingsStore.previewTheme;
+      showHiddenFiles = $settingsStore.showHiddenFiles;
+    }
+  });
+
   function save() {
     settingsStore.updateSetting("fontSize", fontSize);
+    settingsStore.updateSetting("fontFamily", fontFamily);
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
     settingsStore.updateSetting("showHiddenFiles", showHiddenFiles);
@@ -78,6 +91,15 @@
           />
           <span class="value">{fontSize}px</span>
         </div>
+      </div>
+
+      <div class="field">
+        <label for="fontFamily">字体</label>
+        <select id="fontFamily" bind:value={fontFamily}>
+          <option value="SF Mono, Fira Code, Cascadia Code, monospace">等宽 (SF Mono / Fira Code / monospace)</option>
+          <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">无衬线 (System UI / Sans-serif)</option>
+          <option value="Georgia, 'Times New Roman', Times, serif">衬线 (Georgia / Serif)</option>
+        </select>
       </div>
 
       <div class="field">

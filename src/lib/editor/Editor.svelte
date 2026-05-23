@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, untrack } from "svelte";
+import { onMount, untrack, tick } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
   import { EditorState, Compartment } from "@codemirror/state";
   import { openSearchPanel } from "@codemirror/search";
@@ -458,6 +458,20 @@ import { onMount, untrack } from "svelte";
     if (initialScrollRatio == null) return;
     if (lastAppliedScrollRatio !== null && Math.abs(lastAppliedScrollRatio - initialScrollRatio) < 0.001) return;
     scrollEditorToRatio(initialScrollRatio);
+  });
+
+  // Re-measure CodeMirror viewport when typography settings change
+  $effect(() => {
+    const _fs = $settingsStore.fontSize;
+    const _ff = $settingsStore.fontFamily;
+    const _lh = $settingsStore.lineHeight;
+    if (view && !isDestroyed) {
+      tick().then(() => {
+        if (view && !isDestroyed) {
+          view.requestMeasure();
+        }
+      });
+    }
   });
 </script>
 

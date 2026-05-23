@@ -386,6 +386,7 @@
       class="markdown-body"
       style:font-size="{$settingsStore.fontSize}px"
       style:line-height={$settingsStore.lineHeight}
+      style:font-family={$settingsStore.fontFamily}
     >{@html html}</div>
   {:else}
     <div class="empty">
@@ -419,6 +420,14 @@
   .markdown-body {
     max-width: 800px;
     margin: 0 auto;
+  }
+
+  /* Force paragraphs, list items, and blockquotes inside markdown-body to inherit the user's custom line-height and font-family. */
+  .preview :global(.markdown-body p),
+  .preview :global(.markdown-body li),
+  .preview :global(.markdown-body blockquote) {
+    line-height: inherit !important;
+    font-family: inherit;
   }
 
   /* Ensure block-level elements start on a new line. */
