@@ -4,11 +4,12 @@
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
 
-  let { content = "", x = 0, y = 0, visible = false }: {
+  let { content = "", x = 0, y = 0, visible = false, placement = "bottom" }: {
     content?: string;
     x?: number;
     y?: number;
     visible?: boolean;
+    placement?: "top" | "bottom";
   } = $props();
 
   let renderedHtml = $derived(renderMarkdown(content).html);
@@ -57,7 +58,11 @@
   const previewThemeId = $derived($settingsStore.previewTheme);
   const isDark = $derived(themes.find(t => t.id === previewThemeId)?.mode === "dark" || $theme === "dark");
 
-  let style = $derived(`left: ${x}px; top: ${y}px;`);
+  let style = $derived(
+    placement === "top"
+      ? `left: ${x}px; bottom: ${y}px;`
+      : `left: ${x}px; top: ${y}px;`
+  );
 </script>
 
 {#if visible && content}

@@ -8,9 +8,23 @@ marked.setOptions({
   gfm: true,
 });
 
+function decodeHtmlEntities(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#34;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x22;/g, '"')
+    .replace(/&amp;/g, "&");
+}
+
 const renderer = {
   code(token: any) {
-    const text = token.text;
+    const text = decodeHtmlEntities(token.text);
     const lang = (token.lang || "").match(/^\S*/)?.[0] || "";
     let highlighted: string;
 
@@ -30,6 +44,48 @@ const renderer = {
 
     const classAttr = lang ? ` class="language-${lang} hljs"` : ' class="hljs"';
     return `<pre><code${classAttr}>${highlighted}</code></pre>`;
+  },
+  codespan(token: any) {
+    const text = decodeHtmlEntities(token.text);
+    return `<code>${escapeHtml(text)}</code>`;
+  },
+  blockquote(this: any, token: any) {
+    const body = this.parser.parse(token.tokens);
+    const match = body.match(/^\s*<p>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(?:<br\s*\/?>)?\s*/i);
+    if (match) {
+      const type = match[1].toUpperCase();
+      let cleanContent = body.slice(match[0].length);
+      if (/^\s*<\/p>/.test(cleanContent)) {
+        cleanContent = cleanContent.replace(/^\s*<\/p>/, "");
+      } else {
+        cleanContent = "<p>" + cleanContent;
+      }
+
+      const icons: Record<string, string> = {
+        NOTE: `<svg class="octicon octicon-info" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm1.5 7h-3a.5.5 0 0 1 0-1H7V7H6a.5.5 0 0 1 0-1h1.5a.5.5 0 0 1 .5.5v4h1a.5.5 0 0 1 0 1Z"></path></svg>`,
+        TIP: `<svg class="octicon octicon-light-bulb" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 1.5c-2.363 0-4 1.876-4 4 0 .758.208 1.525.614 2.217.363.621.554 1.311.554 2.01v.058c0 .59.375 1.08.9 1.258V13.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-1.72c.525-.178.9-.668.9-1.258v-.058c0-.7-.19-1.39-.554-2.01A4.213 4.213 0 0 0 12 5.5c0-2.124-1.637-4-4-4ZM6 11h4v1.5a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5V11Zm1.5 3h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1 0-1Z"></path></svg>`,
+        IMPORTANT: `<svg class="octicon octicon-report" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.543c0 .242.293.363.464.192L8.03 12.53a.75.75 0 0 1 .53-.22h5.69a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"></path><path d="M7.75 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 7.75 3Zm0 6a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"></path></svg>`,
+        WARNING: `<svg class="octicon octicon-alert" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.457 1.047c.659-1.048 2.187-1.048 2.846 0l5.81 9.25c.685 1.09-.094 2.513-1.422 2.513H1.722c-1.328 0-2.107-1.423-1.422-2.513Zm8.603 2.21a.75.75 0 0 0-1.206 0L1.588 11.46c-.152.243-.017.561.27.561h11.908c.287 0 .422-.318.27-.562Zm-.853 4.29a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75Zm0 4a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"></path></svg>`,
+        CAUTION: `<svg class="octicon octicon-stop" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M4.47.22A.75.75 0 0 1 5 0h6a.75.75 0 0 1 .53.22l4.25 4.25c.141.14.22.33.22.53v6a.75.75 0 0 1-.22.53l-4.25 4.25A.75.75 0 0 1 11 16H5a.75.75 0 0 1-.53-.22L.22 11.53A.75.75 0 0 1 0 11V5a.75.75 0 0 1 .22-.53L4.47.22Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5H5.31Z"></path><path d="M8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 6a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"></path></svg>`
+      };
+
+      const titles: Record<string, string> = {
+        NOTE: "Note",
+        TIP: "Tip",
+        IMPORTANT: "Important",
+        WARNING: "Warning",
+        CAUTION: "Caution"
+      };
+
+      const icon = icons[type];
+      const title = titles[type];
+
+      return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}">
+  <div class="markdown-alert-title">${icon}${title}</div>
+  <div class="markdown-alert-content">${cleanContent}</div>
+</div>`;
+    }
+    return `<blockquote>\n${body}</blockquote>\n`;
   }
 };
 
@@ -484,4 +540,42 @@ export function renderMermaidDocument(src: string): RenderResult {
     html: `<div class="mermaid-container" id="mermaid-0"></div>`,
     mermaidBlocks: [src.trim()],
   };
+}
+
+export function resolveRelativePath(href: string, currentFilePath: string): string {
+  // Determine separator (fallback to '/')
+  const isWindows = currentFilePath.includes("\\");
+  const sep = isWindows ? "\\" : "/";
+  
+  // Normalize href to use the same separator
+  const normalizedHref = href.replace(/[/\\]/g, sep);
+  
+  // Strip hash and query parameters
+  const cleanHref = normalizedHref.split("#")[0].split("?")[0];
+  
+  // Check if absolute path
+  // On Windows, absolute path starts with a drive letter (e.g., C:\)
+  // On Unix, absolute path starts with /
+  const isAbsolute = isWindows 
+    ? /^[a-zA-Z]:\\/.test(cleanHref)
+    : cleanHref.startsWith("/");
+    
+  if (isAbsolute) {
+    return cleanHref;
+  }
+  
+  const parts = currentFilePath.split(sep);
+  parts.pop(); // Remove note filename to get parent directory path
+  
+  const hrefParts = cleanHref.split(sep);
+  for (const part of hrefParts) {
+    if (part === "." || part === "") {
+      continue;
+    } else if (part === "..") {
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return parts.join(sep);
 }

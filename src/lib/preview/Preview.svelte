@@ -4,7 +4,7 @@
   import { vaultStore } from "../../stores/vault";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
-  import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, type RenderResult } from "./markdown";
+  import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, resolveRelativePath, type RenderResult } from "./markdown";
   import { themes } from "./themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
 
@@ -179,6 +179,7 @@
   let previewContent = $state("");
   let previewX = $state(0);
   let previewY = $state(0);
+  let previewPlacement = $state<"top" | "bottom">("bottom");
   let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
   async function handleHover(e: MouseEvent) {
@@ -213,8 +214,7 @@
         
         if (currentFilePath) {
           try {
-            const absoluteUrl = new URL(targetVal, `file://${currentFilePath}`);
-            const absPath = decodeURIComponent(absoluteUrl.pathname);
+            const absPath = resolveRelativePath(decodeURIComponent(targetVal), currentFilePath);
             console.log("[Preview Hover] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
             fullPath = findFile($vaultStore.fileTree, absPath);
           } catch (err) {
@@ -236,15 +236,19 @@
             
             const rect = link.getBoundingClientRect();
             previewX = rect.left;
-            previewY = rect.bottom + 8;
             
             // Adjust X if too close to right edge
             if (previewX + 420 > window.innerWidth) {
               previewX = window.innerWidth - 440;
             }
-            // Adjust Y if too close to bottom edge
-            if (previewY + 350 > window.innerHeight) {
-              previewY = rect.top - 360;
+            
+            // Determine popover placement based on bottom boundaries
+            if (rect.bottom + 8 + 350 > window.innerHeight) {
+              previewPlacement = "top";
+              previewY = window.innerHeight - rect.top + 8;
+            } else {
+              previewPlacement = "bottom";
+              previewY = rect.bottom + 8;
             }
 
             previewVisible = true;
@@ -315,38 +319,47 @@
         vaultStore.search(`#${tag}`);
       }
     } else {
-      // Handle standard local links
+      // Handle standard links (both local and external)
       const anchor = (e.target as HTMLElement).closest("a") as HTMLAnchorElement;
       if (anchor) {
         const href = anchor.getAttribute("href");
-        if (href && !/^(https?:\/\/|mailto:|tel:|data:|blob:|javascript:)/i.test(href)) {
-          e.preventDefault();
-          
-          let resolvedPath = decodeURIComponent(href);
-          console.log("[Preview Click] Local standard link clicked:", resolvedPath);
-          let fullPath: string | null = null;
-          
-          if (currentFilePath) {
+        if (href) {
+          if (/^(https?:\/\/|mailto:|tel:)/i.test(href)) {
+            e.preventDefault();
             try {
-              const absoluteUrl = new URL(href, `file://${currentFilePath}`);
-              const absPath = decodeURIComponent(absoluteUrl.pathname);
-              console.log("[Preview Click] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
-              fullPath = findFile($vaultStore.fileTree, absPath);
+              const { open } = await import("@tauri-apps/plugin-shell");
+              await open(href);
             } catch (err) {
-              console.error("[Preview Click] Error resolving path relative to currentFilePath:", err);
+              console.error("Failed to open external link using tauri-plugin-shell:", err);
             }
-          }
-          
-          if (!fullPath) {
-            console.log("[Preview Click] File not found by relative path, falling back to name search:", resolvedPath);
-            fullPath = findFile($vaultStore.fileTree, resolvedPath);
-          }
+          } else if (!/^(data:|blob:|javascript:)/i.test(href)) {
+            e.preventDefault();
+            
+            let resolvedPath = decodeURIComponent(href);
+            console.log("[Preview Click] Local standard link clicked:", resolvedPath);
+            let fullPath: string | null = null;
+            
+            if (currentFilePath) {
+              try {
+                const absPath = resolveRelativePath(decodeURIComponent(href), currentFilePath);
+                console.log("[Preview Click] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
+                fullPath = findFile($vaultStore.fileTree, absPath);
+              } catch (err) {
+                console.error("[Preview Click] Error resolving path relative to currentFilePath:", err);
+              }
+            }
+            
+            if (!fullPath) {
+              console.log("[Preview Click] File not found by relative path, falling back to name search:", resolvedPath);
+              fullPath = findFile($vaultStore.fileTree, resolvedPath);
+            }
 
-          console.log("[Preview Click] Final matched fullPath:", fullPath);
-          if (fullPath) {
-            vaultStore.openNote(fullPath);
-          } else {
-            console.warn("[Preview Click] Could not find note path in vault:", resolvedPath);
+            console.log("[Preview Click] Final matched fullPath:", fullPath);
+            if (fullPath) {
+              vaultStore.openNote(fullPath);
+            } else {
+              console.warn("[Preview Click] Could not find note path in vault:", resolvedPath);
+            }
           }
         }
       }
@@ -385,6 +398,7 @@
     content={previewContent} 
     x={previewX} 
     y={previewY} 
+    placement={previewPlacement}
   />
 </div>
 
@@ -454,14 +468,62 @@
     border-color: var(--interactive-accent);
   }
 
-  :global(.markdown-body ul),
-  :global(.markdown-body ol) {
+  :global(.markdown-body ul), :global(.markdown-body ol) {
     display: flow-root;
   }
 
   :global(.markdown-body li) {
     display: list-item;
     max-width: none;
+  }
+
+  /* Fallback list styles for themes that do not explicitly define them (e.g. One Dark, GitHub Light, Modern Zen) */
+  :global(.markdown-body ul) {
+    list-style-type: disc;
+    padding-left: 1.8em;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  :global(.markdown-body ol) {
+    list-style-type: decimal;
+    padding-left: 1.8em;
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  :global(.markdown-body li) {
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  /* Nested list indentation */
+  :global(.markdown-body ul ul), :global(.markdown-body ol ul), :global(.markdown-body ul ol), :global(.markdown-body ol ol) {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding-left: 1.5em;
+  }
+
+  :global(.markdown-body .task-list-item) {
+    list-style-type: none;
+  }
+
+  :global(.markdown-body .task-list-item input[type="checkbox"]) {
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* Strikethrough and muted color for checked task list items */
+  :global(.markdown-body li:has(> input[type="checkbox"]:checked)) {
+    text-decoration: line-through;
+    color: var(--text-muted);
+  }
+
+  /* Reset text-decoration and color inheritance for nested lists under checked items */
+  :global(.markdown-body li:has(> input[type="checkbox"]:checked) ul),
+  :global(.markdown-body li:has(> input[type="checkbox"]:checked) ol) {
+    text-decoration: none;
+    color: var(--text-normal);
   }
 
   .render-error {
@@ -553,7 +615,7 @@
     border-radius: 6px;
     background-color: var(--code-inline-bg);
     color: var(--code-inline-color);
-    border: 1px solid var(--code-border);
+    border: none;
   }
 
   .preview :global(.markdown-body pre code) {
@@ -618,7 +680,7 @@
     margin: 1.25em 0;
     padding: 16px 20px;
     background-color: var(--code-bg);
-    border: 1px solid var(--code-border);
+    border: none;
     border-radius: 8px;
     overflow-x: auto;
   }
@@ -670,5 +732,109 @@
 
   .preview :global(.markdown-body tr:hover td) {
     background-color: var(--bg-hover) !important;
+  }
+
+  /* Markdown GFM Alert Styling */
+  :root {
+    --alert-note-border: #0969da;
+    --alert-note-bg: rgba(9, 105, 218, 0.07);
+    --alert-tip-border: #1a7f37;
+    --alert-tip-bg: rgba(26, 127, 55, 0.07);
+    --alert-important-border: #8250df;
+    --alert-important-bg: rgba(130, 80, 223, 0.07);
+    --alert-warning-border: #9a6700;
+    --alert-warning-bg: rgba(154, 103, 0, 0.07);
+    --alert-caution-border: #cf222e;
+    --alert-caution-bg: rgba(207, 34, 46, 0.07);
+  }
+
+  :global(.dark) {
+    --alert-note-border: #2f81f7;
+    --alert-note-bg: rgba(47, 129, 247, 0.12);
+    --alert-tip-border: #3fb950;
+    --alert-tip-bg: rgba(63, 185, 80, 0.12);
+    --alert-important-border: #a371f7;
+    --alert-important-bg: rgba(163, 113, 247, 0.12);
+    --alert-warning-border: #d29922;
+    --alert-warning-bg: rgba(210, 153, 34, 0.12);
+    --alert-caution-border: #f85149;
+    --alert-caution-bg: rgba(248, 81, 73, 0.12);
+  }
+
+  .preview :global(.markdown-alert) {
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.95em;
+    line-height: 1.6;
+  }
+
+  .preview :global(.markdown-alert.markdown-alert-note) {
+    border-left-color: var(--alert-note-border);
+    background-color: var(--alert-note-bg);
+  }
+
+  .preview :global(.markdown-alert.markdown-alert-tip) {
+    border-left-color: var(--alert-tip-border);
+    background-color: var(--alert-tip-bg);
+  }
+
+  .preview :global(.markdown-alert.markdown-alert-important) {
+    border-left-color: var(--alert-important-border);
+    background-color: var(--alert-important-bg);
+  }
+
+  .preview :global(.markdown-alert.markdown-alert-warning) {
+    border-left-color: var(--alert-warning-border);
+    background-color: var(--alert-warning-bg);
+  }
+
+  .preview :global(.markdown-alert.markdown-alert-caution) {
+    border-left-color: var(--alert-caution-border);
+    background-color: var(--alert-caution-bg);
+  }
+
+  .preview :global(.markdown-alert-title) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 0.95em;
+  }
+
+  .preview :global(.markdown-alert-title svg) {
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+
+  .preview :global(.markdown-alert-note .markdown-alert-title) {
+    color: var(--alert-note-border);
+  }
+
+  .preview :global(.markdown-alert-tip .markdown-alert-title) {
+    color: var(--alert-tip-border);
+  }
+
+  .preview :global(.markdown-alert-important .markdown-alert-title) {
+    color: var(--alert-important-border);
+  }
+
+  .preview :global(.markdown-alert-warning .markdown-alert-title) {
+    color: var(--alert-warning-border);
+  }
+
+  .preview :global(.markdown-alert-caution .markdown-alert-title) {
+    color: var(--alert-caution-border);
+  }
+
+  .preview :global(.markdown-alert-content > :first-child) {
+    margin-top: 0;
+  }
+
+  .preview :global(.markdown-alert-content > :last-child) {
+    margin-bottom: 0;
   }
 </style>

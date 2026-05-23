@@ -3,8 +3,9 @@
   import { type } from "@tauri-apps/plugin-os";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
-  import { emit } from "@tauri-apps/api/event";
+  import { emit, listen } from "@tauri-apps/api/event";
   import { Minus, Square, X } from "lucide-svelte";
+  import { getRecentList, type RecentEntry } from "../../stores/vaultHistory";
 
   interface MenuAction {
     type: "emit" | "invoke" | "exec" | "window";
@@ -15,6 +16,8 @@
     label?: string;
     action?: MenuAction;
     separator?: boolean;
+    submenu?: MenuItem[];
+    disabled?: boolean;
   }
 
   interface MenuCategory {
@@ -26,7 +29,60 @@
   let openMenu = $state<number | null>(null);
   const appWindow = getCurrentWindow();
 
-  const menus: MenuCategory[] = [
+  let isCtrlPressed = $state(false);
+  let isMetaPressed = $state(false);
+
+  let recentList = $state<RecentEntry[]>([]);
+
+  async function refreshRecent() {
+    recentList = await getRecentList();
+  }
+
+  function buildRecentSubmenu(list: RecentEntry[]): MenuItem[] {
+    if (list.length === 0) {
+      return [{ label: "No Recent Items", disabled: true }];
+    }
+
+    const items: MenuItem[] = [];
+    const folders = list.filter(e => e.kind === "vault");
+    const files = list.filter(e => e.kind === "file");
+
+    if (folders.length > 0) {
+      items.push({ label: "Folders", disabled: true });
+      folders.forEach((entry) => {
+        const name = entry.path.split("/").pop() || entry.path;
+        items.push({
+          label: name,
+          action: { type: "emit", payload: `open-recent-vault:${entry.path}` },
+        });
+      });
+    }
+
+    if (folders.length > 0 && files.length > 0) {
+      items.push({ separator: true });
+    }
+
+    if (files.length > 0) {
+      items.push({ label: "Files", disabled: true });
+      files.forEach((entry) => {
+        const name = entry.path.split("/").pop() || entry.path;
+        items.push({
+          label: name,
+          action: { type: "emit", payload: `open-recent-file:${entry.path}` },
+        });
+      });
+    }
+
+    items.push({ separator: true });
+    items.push({
+      label: "Clear Recently Opened",
+      action: { type: "emit", payload: "menu-clear-recent" },
+    });
+
+    return items;
+  }
+
+  const menus = $derived<MenuCategory[]>([
     {
       label: "Bilberry",
       items: [
@@ -39,7 +95,12 @@
       label: "File",
       items: [
         { label: "New Window", action: { type: "invoke", payload: "create_new_window" } },
+        { label: "Create Directory...", action: { type: "emit", payload: "menu-create-vault" } },
         { label: "Open Vault...", action: { type: "emit", payload: "menu-open-vault" } },
+        {
+          label: "Open Recent",
+          submenu: buildRecentSubmenu(recentList),
+        },
         { separator: true },
         { label: "Close Window", action: { type: "window", payload: "close" } },
       ],
@@ -72,25 +133,70 @@
         { label: "Zoom", action: { type: "window", payload: "maximize" } },
       ],
     },
-  ];
+  ]);
 
   onMount(() => {
     osType = type();
     document.addEventListener("click", closeMenu);
-    return () => document.removeEventListener("click", closeMenu);
+    
+    refreshRecent();
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control") isCtrlPressed = true;
+      if (e.key === "Meta" || e.key === "Command") isMetaPressed = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") isCtrlPressed = false;
+      if (e.key === "Meta" || e.key === "Command") isMetaPressed = false;
+    };
+    const handleBlur = () => {
+      isCtrlPressed = false;
+      isMetaPressed = false;
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    const unlistenRecent = listen("menu-recent-updated", () => {
+      refreshRecent();
+    });
+
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+      unlistenRecent.then((u) => u());
+    };
   });
 
   function closeMenu() {
     openMenu = null;
   }
 
-  async function handleAction(action: MenuAction | undefined) {
+  async function handleAction(action: MenuAction | undefined, event?: MouseEvent) {
     if (!action) return;
     openMenu = null;
     const win = getCurrentWindow();
+    
+    // Check if Ctrl or Cmd was pressed
+    const isNewWindow = event ? (event.ctrlKey || event.metaKey) : (isCtrlPressed || isMetaPressed);
+
     switch (action.type) {
       case "emit":
-        await emit(action.payload);
+        if (action.payload.startsWith("open-recent-vault:")) {
+          const path = action.payload.substring("open-recent-vault:".length);
+          await emit("menu-open-recent", { path, kind: "vault" });
+        } else if (action.payload.startsWith("open-recent-file:")) {
+          const path = action.payload.substring("open-recent-file:".length);
+          await emit("menu-open-recent", { path, kind: "file" });
+        } else if (action.payload === "menu-clear-recent") {
+          await invoke("clear_recent_list");
+          await refreshRecent();
+        } else {
+          await emit(action.payload);
+        }
         break;
       case "invoke":
         await invoke(action.payload);
@@ -147,11 +253,36 @@
               {#each menu.items as item}
                 {#if item.separator}
                   <div class="menu-separator" role="separator"></div>
+                {:else if item.submenu}
+                  <div class="menu-item-container">
+                    <button class="menu-item-btn submenu-header" role="menuitem">
+                      {item.label} <span class="submenu-arrow">▶</span>
+                    </button>
+                    <div class="submenu-dropdown">
+                      {#each item.submenu as subitem}
+                        {#if subitem.separator}
+                          <div class="menu-separator" role="separator"></div>
+                        {:else if subitem.disabled}
+                          <div class="menu-item-label disabled">{subitem.label}</div>
+                        {:else}
+                          <button
+                            class="menu-item-btn"
+                            role="menuitem"
+                            onclick={(e) => handleAction(subitem.action, e)}
+                          >
+                            {subitem.label}
+                          </button>
+                        {/if}
+                      {/each}
+                    </div>
+                  </div>
+                {:else if item.disabled}
+                  <div class="menu-item-label disabled">{item.label}</div>
                 {:else}
                   <button
                     class="menu-item-btn"
                     role="menuitem"
-                    onclick={() => handleAction(item.action)}
+                    onclick={(e) => handleAction(item.action, e)}
                   >
                     {item.label}
                   </button>
@@ -240,6 +371,51 @@
     padding: 4px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     z-index: 10000;
+  }
+
+  .menu-item-container {
+    position: relative;
+    width: 100%;
+  }
+
+  .submenu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .submenu-arrow {
+    font-size: 9px;
+    opacity: 0.6;
+  }
+
+  .submenu-dropdown {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -4px;
+    min-width: 200px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-divider);
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 10001;
+  }
+
+  .menu-item-container:hover .submenu-dropdown {
+    display: block;
+  }
+
+  .menu-item-label.disabled {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    user-select: none;
   }
 
   .menu-item-btn {

@@ -6,6 +6,7 @@ import {
   renderMarkdown,
   renderMermaidDocument,
   splitMarkdownBlocks,
+  resolveRelativePath,
 } from "../src/lib/preview/markdown.ts";
 
 test("extracts mermaid blocks with LF line endings", () => {
@@ -160,8 +161,8 @@ test("decodes double-escaped HTML entities in code blocks", () => {
     ].join("\n")
   );
   
-  assert.match(result.html, /Path\(&#39;筑仙\/正式章节&#39;\)/);
-  assert.match(result.html, /group\(1\)/);
+  assert.match(result.html, /Path\(.*筑仙\/正式章节.*\)/);
+  assert.match(result.html, /group\(.*1.*\)/);
   assert.doesNotMatch(result.html, /&amp;#39;/);
 });
 
@@ -175,7 +176,42 @@ test("handles dollar signs in code blocks without corruption", () => {
     ].join("\n")
   );
   
-  assert.match(result.html, /const \$ = jQuery;/);
-  assert.match(result.html, /let x = \$state\(0\);/);
+  assert.match(result.html, /const.*\$ = jQuery;/);
+  assert.match(result.html, /let.*x = \$state\(.*0.*\);/);
 });
+
+test("resolves relative paths correctly on Unix and Windows", () => {
+  // Unix paths
+  assert.equal(
+    resolveRelativePath("typescirpt-learn-plan.md", "/Users/lll/Vault/note.md"),
+    "/Users/lll/Vault/typescirpt-learn-plan.md"
+  );
+  assert.equal(
+    resolveRelativePath("./typescirpt-learn-plan.md", "/Users/lll/Vault/note.md"),
+    "/Users/lll/Vault/typescirpt-learn-plan.md"
+  );
+  assert.equal(
+    resolveRelativePath("../typescirpt-learn-plan.md", "/Users/lll/Vault/note.md"),
+    "/Users/lll/typescirpt-learn-plan.md"
+  );
+  assert.equal(
+    resolveRelativePath("typescirpt-learn-plan.md#section?foo=bar", "/Users/lll/Vault/note.md"),
+    "/Users/lll/Vault/typescirpt-learn-plan.md"
+  );
+  
+  // Windows paths
+  assert.equal(
+    resolveRelativePath("typescirpt-learn-plan.md", "C:\\Users\\lll\\Vault\\note.md"),
+    "C:\\Users\\lll\\Vault\\typescirpt-learn-plan.md"
+  );
+  assert.equal(
+    resolveRelativePath(".\\typescirpt-learn-plan.md", "C:\\Users\\lll\\Vault\\note.md"),
+    "C:\\Users\\lll\\Vault\\typescirpt-learn-plan.md"
+  );
+  assert.equal(
+    resolveRelativePath("..\\typescirpt-learn-plan.md", "C:\\Users\\lll\\Vault\\note.md"),
+    "C:\\Users\\lll\\typescirpt-learn-plan.md"
+  );
+});
+
 

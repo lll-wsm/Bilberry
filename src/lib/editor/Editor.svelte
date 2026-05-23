@@ -12,6 +12,7 @@ import { onMount, untrack } from "svelte";
   import type { Extension } from "@codemirror/state";
   import LinkPreview from "../ui/LinkPreview.svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { resolveRelativePath } from "../preview/markdown";
 
   let { content = "", readonly = false, onContentChange, onScrollChange, initialScrollRatio = null }: {
     content?: string;
@@ -34,6 +35,7 @@ import { onMount, untrack } from "svelte";
   let previewContent = $state("");
   let previewX = $state(0);
   let previewY = $state(0);
+  let previewPlacement = $state<"top" | "bottom">("bottom");
   let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
   let hoveredLinkRange: { start: number; end: number } | null = null;
 
@@ -260,8 +262,7 @@ import { onMount, untrack } from "svelte";
           
           if (contentPath) {
             try {
-              const absoluteUrl = new URL(targetVal, `file://${contentPath}`);
-              const absPath = decodeURIComponent(absoluteUrl.pathname);
+              const absPath = resolveRelativePath(decodeURIComponent(targetVal), contentPath);
               console.log("[Editor Hover] contentPath:", contentPath, "-> Resolving relative path:", absPath);
               fullPath = findFile($vaultStore.fileTree, absPath);
             } catch (err) {
@@ -284,15 +285,19 @@ import { onMount, untrack } from "svelte";
               const startCoords = view.coordsAtPos(startDocPos);
               if (startCoords) {
                 previewX = startCoords.left;
-                previewY = startCoords.bottom + 8;
                 
                 // Adjust X if too close to right edge
                 if (previewX + 420 > window.innerWidth) {
                   previewX = window.innerWidth - 440;
                 }
-                // Adjust Y if too close to bottom edge
-                if (previewY + 350 > window.innerHeight) {
-                  previewY = startCoords.top - 360;
+                
+                // Determine placement based on bottom boundaries
+                if (startCoords.bottom + 8 + 350 > window.innerHeight) {
+                  previewPlacement = "top";
+                  previewY = window.innerHeight - startCoords.top + 8;
+                } else {
+                  previewPlacement = "bottom";
+                  previewY = startCoords.bottom + 8;
                 }
                 
                 previewVisible = true;
@@ -308,7 +313,7 @@ import { onMount, untrack } from "svelte";
       }
     };
 
-    const handleMouseClick = (e: MouseEvent) => {
+    const handleMouseClick = async (e: MouseEvent) => {
       if (!view || isDestroyed) return;
 
       const hasModifier = e.metaKey || e.ctrlKey;
@@ -332,13 +337,22 @@ import { onMount, untrack } from "svelte";
         e.stopPropagation();
 
         const targetVal = link.target;
+        if (/^(https?:\/\/|mailto:|tel:)/i.test(targetVal)) {
+          try {
+            const { open } = await import("@tauri-apps/plugin-shell");
+            await open(targetVal);
+          } catch (err) {
+            console.error("Failed to open external link using tauri-plugin-shell:", err);
+          }
+          return;
+        }
+
         let fileName = decodeURIComponent(targetVal);
         let fullPath: string | null = null;
         
         if (contentPath) {
           try {
-            const absoluteUrl = new URL(targetVal, `file://${contentPath}`);
-            const absPath = decodeURIComponent(absoluteUrl.pathname);
+            const absPath = resolveRelativePath(decodeURIComponent(targetVal), contentPath);
             console.log("[Editor Click] contentPath:", contentPath, "-> Resolving relative path:", absPath);
             fullPath = findFile($vaultStore.fileTree, absPath);
           } catch (err) {
@@ -461,6 +475,7 @@ import { onMount, untrack } from "svelte";
     content={previewContent} 
     x={previewX} 
     y={previewY} 
+    placement={previewPlacement}
   />
 </div>
 

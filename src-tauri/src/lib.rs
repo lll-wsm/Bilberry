@@ -67,6 +67,9 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .accelerator("CmdOrCtrl+N")
         .build(app)?;
 
+    let create_vault = MenuItemBuilder::with_id("create_vault", "Create Directory...")
+        .build(app)?;
+
     let open_vault = MenuItemBuilder::with_id("open_vault", "Open Vault...")
         .accelerator("CmdOrCtrl+O")
         .build(app)?;
@@ -80,16 +83,49 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
             .build(app)?;
         recent_menu_builder = recent_menu_builder.item(&no_recent);
     } else {
-        for (i, entry) in recent_entries.iter().enumerate() {
-            let name = entry.path.split('/').last().unwrap_or(&entry.path);
-            let icon = if entry.kind == "vault" { "(D)" } else { "(F)" };
-            let item = MenuItemBuilder::with_id(
-                &format!("open_recent_{}", i),
-                &format!("{}  {}", name, icon),
-            )
-            .build(app)?;
-            recent_menu_builder = recent_menu_builder.item(&item);
+        let vaults: Vec<&recent::RecentEntry> = recent_entries.iter().filter(|e| e.kind == "vault").collect();
+        let files: Vec<&recent::RecentEntry> = recent_entries.iter().filter(|e| e.kind == "file").collect();
+
+        if !vaults.is_empty() {
+            let folder_label = MenuItemBuilder::with_id("label_folders", "Folders")
+                .enabled(false)
+                .build(app)?;
+            recent_menu_builder = recent_menu_builder.item(&folder_label);
+
+            for entry in &vaults {
+                let idx = recent_entries.iter().position(|e| e.path == entry.path).unwrap();
+                let name = entry.path.split('/').last().unwrap_or(&entry.path);
+                let item = MenuItemBuilder::with_id(
+                    &format!("open_recent_{}", idx),
+                    name,
+                )
+                .build(app)?;
+                recent_menu_builder = recent_menu_builder.item(&item);
+            }
         }
+
+        if !vaults.is_empty() && !files.is_empty() {
+            recent_menu_builder = recent_menu_builder.separator();
+        }
+
+        if !files.is_empty() {
+            let file_label = MenuItemBuilder::with_id("label_files", "Files")
+                .enabled(false)
+                .build(app)?;
+            recent_menu_builder = recent_menu_builder.item(&file_label);
+
+            for entry in &files {
+                let idx = recent_entries.iter().position(|e| e.path == entry.path).unwrap();
+                let name = entry.path.split('/').last().unwrap_or(&entry.path);
+                let item = MenuItemBuilder::with_id(
+                    &format!("open_recent_{}", idx),
+                    name,
+                )
+                .build(app)?;
+                recent_menu_builder = recent_menu_builder.item(&item);
+            }
+        }
+
         recent_menu_builder = recent_menu_builder.separator();
         let clear_recent = MenuItemBuilder::with_id("clear_recent", "Clear Recently Opened")
             .build(app)?;
@@ -105,6 +141,7 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&new_window)
         .separator()
+        .item(&create_vault)
         .item(&open_vault)
         .item(&open_recent_menu)
         .separator()
@@ -175,6 +212,46 @@ fn refresh_menu(app: tauri::AppHandle) {
     rebuild_menu(&app);
 }
 
+#[tauri::command]
+fn open_in_new_window(app: tauri::AppHandle, vault_path: Option<String>, file_path: Option<String>) {
+    let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
+    let mut query = String::new();
+    if let Some(vp) = vault_path {
+        query.push_str(&format!("?vault={}", urlencoding::encode(&vp)));
+    }
+    if let Some(fp) = file_path {
+        if query.is_empty() {
+            query.push_str(&format!("?file={}", urlencoding::encode(&fp)));
+        } else {
+            query.push_str(&format!("&file={}", urlencoding::encode(&fp)));
+        }
+    }
+    
+    let url_str = format!("index.html{}", query);
+    
+    #[allow(unused_mut)]
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url_str.into()))
+        .title("Bilberry")
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(800.0, 600.0);
+        
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
+    }
+    builder.build().ok();
+}
+
+#[tauri::command]
+fn clear_recent_list(app: tauri::AppHandle) {
+    let entries = recent::load_recent();
+    for e in &entries {
+        recent::remove_recent(&e.path);
+    }
+    rebuild_menu(&app);
+    app.emit("menu-recent-updated", ()).ok();
+}
+
 #[derive(Clone, serde::Serialize)]
 struct RecentPayload {
     path: String,
@@ -232,6 +309,9 @@ pub fn run() {
                 "settings" => {
                     app.emit("menu-show-settings", ()).ok();
                 }
+                "create_vault" => {
+                    app.emit("menu-create-vault", ()).ok();
+                }
                 "open_vault" => {
                     app.emit("menu-open-vault", ()).ok();
                 }
@@ -271,6 +351,7 @@ pub fn run() {
                         recent::remove_recent(&e.path);
                     }
                     rebuild_menu(app);
+                    app.emit("menu-recent-updated", ()).ok();
                 }
                 _ => {
                     if let Some(idx) = id.strip_prefix("open_recent_") {
@@ -314,6 +395,8 @@ pub fn run() {
             refresh_menu,
             notify_frontend_ready,
             create_new_window,
+            open_in_new_window,
+            clear_recent_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

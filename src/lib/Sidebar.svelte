@@ -1,5 +1,6 @@
 <script lang="ts">
   import { vaultStore } from "../stores/vault";
+  import { settingsStore } from "../stores/settings";
   import { contextMenu } from "../stores/contextMenu";
   import { fileClipboard } from "../stores/fileClipboard";
   import { fileTreePending } from "../stores/fileTreePending";
@@ -117,10 +118,31 @@
       { label: "复制绝对路径", action: () => copyAbsolutePath(vaultPath) },
     ]);
   }
+
+  function startResize(e: MouseEvent) {
+    e.preventDefault();
+    const startWidth = $settingsStore.sidebarWidth;
+    const startX = e.clientX;
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const deltaX = moveEvent.clientX - startX;
+      // Constraint: sidebar width between 160px and 600px
+      const newWidth = Math.max(160, Math.min(600, startWidth + deltaX));
+      settingsStore.updateSetting("sidebarWidth", newWidth);
+    }
+
+    function onMouseUp() {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="sidebar">
+<div class="sidebar" style="width: {$settingsStore.sidebarWidth}px">
   <div class="sidebar-header">
     <div class="tabs">
       <button
@@ -162,6 +184,10 @@
   >
     <SearchPanel />
   </div>
+  <div
+    class="resize-handle"
+    onmousedown={startResize}
+  ></div>
 </div>
 
 <style>
@@ -244,5 +270,21 @@
   .hidden-files,
   .hidden-search {
     display: none;
+  }
+
+  .resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+    transition: background-color 0.2s;
+  }
+
+  .resize-handle:hover,
+  .resize-handle:active {
+    background-color: var(--interactive-accent);
   }
 </style>

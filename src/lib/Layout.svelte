@@ -6,8 +6,8 @@
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
   import { applyTheme, initPreviewThemeSync } from "./preview/themes";
 
-// Apply the cached preview theme immediately to prevent flash
-initPreviewThemeSync();
+  // Apply the cached preview theme immediately to prevent flash
+  initPreviewThemeSync();
   import Sidebar from "./Sidebar.svelte";
   import EditorPanel from "./editor/EditorPanel.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -26,26 +26,80 @@ initPreviewThemeSync();
   let showSettings = $state(false);
   let unlisteners: UnlistenFn[] = [];
 
-  onMount(() => {
-    loadHistory().then((h) => recentDirs = h);
+  let isCtrlPressed = $state(false);
+  let isMetaPressed = $state(false);
 
+  onMount(() => {
     let disposed = false;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control") isCtrlPressed = true;
+      if (e.key === "Meta" || e.key === "Command") isMetaPressed = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") isCtrlPressed = false;
+      if (e.key === "Meta" || e.key === "Command") isMetaPressed = false;
+    };
+    const handleBlur = () => {
+      isCtrlPressed = false;
+      isMetaPressed = false;
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    // Check if initial vault/file paths are passed in URL query params
+    const params = new URLSearchParams(window.location.search);
+    const initialVault = params.get("vault");
+    const initialFile = params.get("file");
+
+    loadHistory().then((h) => {
+      recentDirs = h;
+      
+      if (initialVault) {
+        vaultStore.openVault(initialVault).then(() => {
+          addToHistory(initialVault);
+          if (initialFile) {
+            vaultStore.openNote(initialFile);
+            addToRecent(initialFile, "file");
+          }
+        }).catch((e) => {
+          console.error("Failed to open initial vault from query param:", initialVault, e);
+        });
+      } else if (initialFile) {
+        const parentDir = initialFile.substring(0, initialFile.lastIndexOf("/"));
+        vaultStore.openVault(parentDir).then(() => {
+          vaultStore.openNote(initialFile);
+          addToRecent(initialFile, "file");
+        }).catch((e) => {
+          console.error("Failed to open parent vault of file:", initialFile, e);
+        });
+      } else if (h.length > 0) {
+        // Auto-open last closed directory on startup if no query parameter is present
+        handleOpenRecent(h[0]);
+      }
+    });
 
     const registerListeners = async () => {
       const listeners = await Promise.all([
         listen("menu-show-settings", () => {
           showSettings = true;
         }),
+        listen("menu-create-vault", () => {
+          handleCreateVault();
+        }),
         listen("menu-open-vault", () => {
-          handleOpenVault();
+          handleOpenVault(isCtrlPressed || isMetaPressed);
         }),
         listen<{ path: string; kind: string }>("menu-open-recent", (event) => {
           const { path, kind } = event.payload;
+          const newWindow = isCtrlPressed || isMetaPressed;
           if (kind === "vault") {
-            handleOpenRecent(path);
+            handleOpenRecent(path, newWindow);
             addToRecent(path, "vault");
           } else {
-            handleOpenRecentFile(path);
+            handleOpenRecentFile(path, newWindow);
           }
         }),
         listen("menu-close-window", () => {
@@ -74,9 +128,9 @@ initPreviewThemeSync();
       unlisteners.push(...listeners);
 
       // Save session when the window is about to close (window button, Cmd+W, Cmd+Q)
-    getCurrentWindow().onCloseRequested(() => {
-      vaultStore.closeVault();
-    }).then((unlisten) => unlisteners.push(unlisten));
+      getCurrentWindow().onCloseRequested(() => {
+        vaultStore.closeVault();
+      }).then((unlisten) => unlisteners.push(unlisten));
       await invoke("notify_frontend_ready");
     };
 
@@ -87,18 +141,29 @@ initPreviewThemeSync();
     return () => {
       disposed = true;
       unlisteners.forEach((u) => u());
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
     };
   });
 
-  async function handleOpenRecentFile(path: string) {
-    // Open the parent directory as vault, then open the file
-    const parentDir = path.substring(0, path.lastIndexOf("/"));
-    try {
-      await vaultStore.openVault(parentDir);
-      await vaultStore.openNote(path);
-      addToRecent(path, "file");
-    } catch {
-      alert("无法打开文件: " + path);
+  async function handleOpenRecentFile(path: string, newWindow = false) {
+    if (newWindow) {
+      try {
+        await invoke("open_in_new_window", { filePath: path });
+      } catch (e) {
+        alert("打开新窗口失败: " + e);
+      }
+    } else {
+      // Open the parent directory as vault, then open the file
+      const parentDir = path.substring(0, path.lastIndexOf("/"));
+      try {
+        await vaultStore.openVault(parentDir);
+        await vaultStore.openNote(path);
+        addToRecent(path, "file");
+      } catch {
+        alert("无法打开文件: " + path);
+      }
     }
   }
 
@@ -122,19 +187,27 @@ initPreviewThemeSync();
     applyTheme(tid);
   });
 
-  async function handleOpenVault() {
+  async function handleOpenVault(newWindow = false) {
     const selected = await open({
       directory: true,
       multiple: false,
       title: "选择目录",
     });
     if (selected) {
-      try {
-        await vaultStore.openVault(selected);
-        await addToHistory(selected);
-        recentDirs = await loadHistory();
-      } catch (e) {
-        alert("打开目录失败: " + e);
+      if (newWindow) {
+        try {
+          await invoke("open_in_new_window", { vaultPath: selected });
+        } catch (e) {
+          alert("打开新窗口失败: " + e);
+        }
+      } else {
+        try {
+          await vaultStore.openVault(selected);
+          await addToHistory(selected);
+          recentDirs = await loadHistory();
+        } catch (e) {
+          alert("打开目录失败: " + e);
+        }
       }
     }
   }
@@ -157,73 +230,41 @@ initPreviewThemeSync();
     }
   }
 
-  async function handleOpenRecent(path: string) {
-    try {
-      await vaultStore.openVault(path);
-      await addToHistory(path);
-      recentDirs = await loadHistory();
-    } catch (e) {
-      alert("打开目录失败: " + e);
-      await removeFromHistory(path);
-      recentDirs = await loadHistory();
+  async function handleOpenRecent(path: string, newWindow = false) {
+    if (newWindow) {
+      try {
+        await invoke("open_in_new_window", { vaultPath: path });
+      } catch (e) {
+        alert("打开新窗口失败: " + e);
+      }
+    } else {
+      try {
+        await vaultStore.openVault(path);
+        await addToHistory(path);
+        recentDirs = await loadHistory();
+      } catch (e) {
+        alert("打开目录失败: " + e);
+        await removeFromHistory(path);
+        recentDirs = await loadHistory();
+      }
     }
-  }
-
-  async function handleRemoveHistory(path: string) {
-    await removeFromHistory(path);
-    recentDirs = await loadHistory();
   }
 
   function onContentChange(text: string) {
     vaultStore.updateContent($vaultStore.currentFilePath, text);
   }
-
-  let showWelcome = $derived(!$vaultStore.vault);
-
-  function onWelcomeDrag(e: MouseEvent) {
-    if ((e.target as HTMLElement).closest("button, input, a, [role='button']")) return;
-    e.preventDefault();
-    getCurrentWindow().startDragging();
-  }
 </script>
 
-{#if showWelcome}
-  <div class="welcome-container">
-    <Titlebar />
-    <MenuBar />
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="welcome" onmousedown={onWelcomeDrag}>
-      <h1>Bilberry</h1>
-      <p class="subtitle">Markdown 笔记编辑器</p>
-      <div class="actions">
-        <button class="btn" onclick={handleCreateVault}>新建目录</button>
-        <button class="btn" onclick={handleOpenVault}>打开目录</button>
-      </div>
-      {#if recentDirs.length > 0}
-        <div class="recent">
-          <p class="recent-label">最近打开</p>
-          {#each recentDirs as dir}
-            <div class="recent-item" onclick={() => handleOpenRecent(dir)} onkeydown={(e) => { if (e.key === 'Enter') handleOpenRecent(dir); }} role="button" tabindex="0" title={dir}>
-              <span class="recent-name">{dir.split("/").pop()}</span>
-              <button class="recent-remove" onclick={(e) => { e.stopPropagation(); handleRemoveHistory(dir); }}>
-                <X size={14} />
-              </button>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  </div>
-{:else}
-  <div class="app-root">
-    <Titlebar />
-    <MenuBar />
-    <div class="layout">
-      {#if sidebarOpen}
-        <Sidebar />
-      {/if}
-      <main class="main-content">
-        <TabBar {sidebarOpen} onToggleSidebar={() => sidebarOpen = !sidebarOpen} />
+<div class="app-root">
+  <Titlebar />
+  <MenuBar />
+  <div class="layout">
+    {#if sidebarOpen}
+      <Sidebar />
+    {/if}
+    <main class="main-content">
+      <TabBar {sidebarOpen} onToggleSidebar={() => sidebarOpen = !sidebarOpen} />
+      {#if $vaultStore.vault}
         {#if $vaultStore.currentFilePath}
           <EditorPanel
             content={$vaultStore.currentContent}
@@ -234,127 +275,19 @@ initPreviewThemeSync();
             <p>选择一篇笔记开始编辑</p>
           </div>
         {/if}
-      </main>
-    </div>
-    <StatusBar onOpenSettings={() => showSettings = true} />
-    <SettingsModal show={showSettings} onclose={() => showSettings = false} />
-    <ContextMenu />
+      {:else}
+        <div class="empty-state">
+          <p>未打开目录。请通过“文件”菜单新建或打开目录。</p>
+        </div>
+      {/if}
+    </main>
   </div>
-{/if}
+  <StatusBar onOpenSettings={() => showSettings = true} />
+  <SettingsModal show={showSettings} onclose={() => showSettings = false} />
+  <ContextMenu />
+</div>
 
 <style>
-  .welcome-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: var(--bg-primary);
-  }
-
-  .welcome {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    color: var(--text-normal);
-  }
-
-  .welcome h1 {
-    font-size: 32px;
-    font-weight: 700;
-  }
-
-  .subtitle {
-    color: var(--text-muted);
-  }
-
-  .actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 24px;
-  }
-
-  .btn {
-    padding: var(--spacing-2) var(--spacing-4);
-    border: 1px solid var(--border-divider);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    cursor: pointer;
-    font-size: 14px;
-    color: var(--text-normal);
-    transition: background 0.1s ease;
-  }
-
-  .btn:hover {
-    background: var(--bg-hover);
-  }
-
-  .recent {
-    margin-top: 32px;
-    width: 360px;
-    max-width: 80vw;
-  }
-
-  .recent-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    text-align: center;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .recent-item {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-2);
-    width: 100%;
-    padding: var(--spacing-2) var(--spacing-3);
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.1s ease;
-  }
-
-  .recent-item:hover {
-    background: var(--bg-hover);
-  }
-
-  .recent-name {
-    font-size: 14px;
-    color: var(--text-normal);
-    font-weight: 500;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .recent-remove {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
-    color: var(--text-muted);
-    opacity: 0;
-    transition: opacity 0.1s ease;
-  }
-
-  .recent-item:hover .recent-remove {
-    opacity: 1;
-  }
-
-  .recent-remove:hover {
-    background: var(--bg-hover);
-    color: var(--text-normal);
-  }
-
   .app-root {
     display: flex;
     flex-direction: column;

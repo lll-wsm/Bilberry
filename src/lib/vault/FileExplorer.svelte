@@ -356,7 +356,7 @@
           }}
         />
       {:else}
-        <span class="name">{entry.name}</span>
+        <span class="name" title={entry.name}>{entry.name}</span>
       {/if}
     </button>
     {#if entry.is_dir && expandedDirs.has(entry.path)}

@@ -234,7 +234,6 @@ function createVaultStore() {
         if (focus) {
           this.switchTab(path);
         }
-        addToRecent(path, "file");
         return;
       }
 
@@ -272,7 +271,6 @@ function createVaultStore() {
         if (focus) {
           editorStore.syncModeForFile(isPreviewableTextPath(path));
         }
-        addToRecent(path, "file");
 
         // Persist session after opening a new tab
         if (focus) {
