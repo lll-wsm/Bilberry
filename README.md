@@ -2,7 +2,6 @@
 
 A desktop Markdown note editor built with **Tauri 2**, **Svelte 5**, and **Rust**.
 
-![ScreenShot1](ScreenShot_2026-05-07_160411_101.png)
 ![ScreenShot2](ScreenShot_2026-05-07_160351_177.png)
 
 ## Features
