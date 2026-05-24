@@ -4,6 +4,7 @@ mod watcher;
 
 pub use scanner::*;
 pub use vault::*;
+pub use watcher::*;
 
 use serde::Serialize;
 

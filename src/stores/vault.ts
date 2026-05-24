@@ -89,6 +89,84 @@ function createVaultStore() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSavedContent = "";
   let lastSavedEncoding = "UTF-8";
+  let fileWatcherUnlisten: (() => void) | null = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function debouncedRefreshTree() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      vaultStore.refreshFileTree();
+    }, 200);
+  }
+
+  async function handleFileWatcherEvent(payload: { type: string; path: string; old_path?: string }) {
+    const { type, path, old_path } = payload;
+
+    if (type === "create" || type === "remove" || type === "rename") {
+      debouncedRefreshTree();
+    }
+
+    let state: VaultState | undefined;
+    const unsub = subscribe((s) => { state = s; });
+    unsub();
+    if (!state) return;
+
+    if (type === "rename" && old_path) {
+      vaultStore.handleFileRename(old_path, path);
+    } else if (type === "remove") {
+      if (state.currentFilePath === path) {
+        alert(`当前编辑的文件已被外部删除: ${path.split("/").pop()}`);
+        vaultStore.closeTab(path);
+      } else if (state.openTabs.some(t => t.path === path)) {
+        vaultStore.closeTab(path);
+      }
+    } else if (type === "modify") {
+      const tab = state.openTabs.find(t => t.path === path);
+      if (!tab) return;
+
+      try {
+        const encoding = tab.encoding || "UTF-8";
+        const newContent = await invoke<string>("read_note", { path, encoding });
+
+        if (state.currentFilePath === path) {
+          if (state.currentContent === newContent) {
+            return;
+          }
+
+          const isDirty = state.currentContent !== lastSavedContent;
+          if (!isDirty) {
+            update((s) => ({
+              ...s,
+              currentContent: newContent,
+              openTabs: s.openTabs.map(t => t.path === path ? { ...t, content: newContent } : t)
+            }));
+            lastSavedContent = newContent;
+          } else {
+            const confirmReload = confirm(
+              `文件 "${path.split("/").pop()}" 已在外部被修改。\n\n是否重新加载外部版本？这会覆盖您的本地未保存修改。`
+            );
+            if (confirmReload) {
+              update((s) => ({
+                ...s,
+                currentContent: newContent,
+                openTabs: s.openTabs.map(t => t.path === path ? { ...t, content: newContent } : t)
+              }));
+              lastSavedContent = newContent;
+            }
+          }
+        } else {
+          if (tab.content === newContent) return;
+          update((s) => ({
+            ...s,
+            openTabs: s.openTabs.map(t => t.path === path ? { ...t, content: newContent } : t)
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to sync file content on modify event:", e);
+      }
+    }
+  }
+
 
   function persistSession(state: VaultState) {
     if (!state.vault) return;
@@ -102,11 +180,14 @@ function createVaultStore() {
 
   function debouncedSave(path: string | null, content: string, encoding: string) {
     if (!path) return;
-    lastSavedContent = content;
-    lastSavedEncoding = encoding;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      invoke("write_note", { path, content, encoding }).catch(console.error);
+      invoke("write_note", { path, content, encoding })
+        .then(() => {
+          lastSavedContent = content;
+          lastSavedEncoding = encoding;
+        })
+        .catch(console.error);
     }, 1000);
   }
 
@@ -148,13 +229,33 @@ function createVaultStore() {
           for (const tabPath of session.openTabs) {
             await this.openNote(tabPath, false);
           }
+          
+          let activeTabRestored = false;
           if (session.activeTab) {
             this.switchTab(session.activeTab);
-            const pos = session.scrollPositions[session.activeTab];
-            if (pos) {
-              pendingNavRange.set(pos);
+            let currentState: VaultState | undefined;
+            const unsub = subscribe((s) => { currentState = s; });
+            unsub();
+            if (currentState && currentState.currentFilePath === session.activeTab) {
+              activeTabRestored = true;
+              const pos = session.scrollPositions[session.activeTab];
+              if (pos) {
+                pendingNavRange.set(pos);
+              }
             }
           }
+
+          // Fallback if the active tab was deleted or not restored
+          if (!activeTabRestored) {
+            let currentState: VaultState | undefined;
+            const unsub = subscribe((s) => { currentState = s; });
+            unsub();
+            if (currentState && currentState.openTabs.length > 0) {
+              const fallbackTab = currentState.openTabs[currentState.openTabs.length - 1].path;
+              this.switchTab(fallbackTab);
+            }
+          }
+
           // Persist the restored session state so it's not lost if the app closes
           let restoredSnapshot: VaultState | undefined;
           const restoreUnsub = subscribe((s) => { restoredSnapshot = s; });
@@ -175,6 +276,19 @@ function createVaultStore() {
         } catch (e) {
           console.error("Search index build failed:", e);
         }
+
+        // Register file watcher
+        if (fileWatcherUnlisten) {
+          fileWatcherUnlisten();
+          fileWatcherUnlisten = null;
+        }
+        const { listen } = await import("@tauri-apps/api/event");
+        fileWatcherUnlisten = await listen<{ type: string; path: string; old_path?: string }>(
+          "vault-file-changed",
+          (event) => {
+            handleFileWatcherEvent(event.payload);
+          }
+        );
       } catch (e) {
         update((s) => ({ ...s, loading: false }));
         throw e;
@@ -270,6 +384,8 @@ function createVaultStore() {
         }));
         if (focus) {
           editorStore.syncModeForFile(isPreviewableTextPath(path));
+          lastSavedContent = content;
+          lastSavedEncoding = encoding;
         }
 
         // Persist session after opening a new tab
@@ -299,11 +415,14 @@ function createVaultStore() {
           }
           return { ...s, loading: false, openTabs: remaining };
         });
-        alert("读取笔记失败: " + e);
+        if (focus) {
+          alert("读取笔记失败: " + e);
+        }
       }
     },
 
     switchTab(path: string) {
+      this.ensureSaved();
       editorStore.syncModeForFile(isPreviewableTextPath(path));
       update((s) => {
         if (path === s.currentFilePath) return s;
@@ -316,6 +435,10 @@ function createVaultStore() {
         // Find target tab
         const target = updatedTabs.find(t => t.path === path);
         if (!target) return s;
+
+        lastSavedContent = target.content;
+        lastSavedEncoding = target.encoding;
+
         const newState = {
           ...s,
           currentFilePath: target.path,
@@ -335,6 +458,7 @@ function createVaultStore() {
       });
     },
     closeTab(path: string) {
+      this.ensureSaved();
       update((s) => {
         // If path is a directory (doesn't end with a known extension, or we can check via tree)
         // For simplicity and safety, we close any tab that starts with this path (for directories)
@@ -363,6 +487,10 @@ function createVaultStore() {
             const newIdx = Math.min(currentIdx, filteredTabs.length - 1);
             const next = filteredTabs[newIdx >= 0 ? newIdx : 0];
             editorStore.syncModeForFile(isPreviewableTextPath(next.path));
+            
+            lastSavedContent = next.content;
+            lastSavedEncoding = next.encoding;
+
             const newState = {
               ...s,
               currentFilePath: next.path,
@@ -400,17 +528,34 @@ function createVaultStore() {
 
     handleFileRename(oldPath: string, newPath: string) {
       update((s) => {
+        const isCurrentDirMatch = s.currentFilePath === oldPath || s.currentFilePath?.startsWith(oldPath + "/");
+        
+        const updatedTabs = s.openTabs.map(t => {
+          if (t.path === oldPath) {
+            return { ...t, path: newPath };
+          } else if (t.path.startsWith(oldPath + "/")) {
+            const relativePart = t.path.slice(oldPath.length);
+            return { ...t, path: newPath + relativePart };
+          }
+          return t;
+        });
+
+        let newCurrentFilePath = s.currentFilePath;
         if (s.currentFilePath === oldPath) {
-          editorStore.syncModeForFile(isPreviewableTextPath(newPath));
+          newCurrentFilePath = newPath;
+        } else if (s.currentFilePath?.startsWith(oldPath + "/")) {
+          const relativePart = s.currentFilePath.slice(oldPath.length);
+          newCurrentFilePath = newPath + relativePart;
         }
-        const updatedTabs = s.openTabs.map(t =>
-          t.path === oldPath ? { ...t, path: newPath } : t
-        );
+
+        if (isCurrentDirMatch && newCurrentFilePath) {
+          editorStore.syncModeForFile(isPreviewableTextPath(newCurrentFilePath));
+        }
+
         return {
           ...s,
           openTabs: updatedTabs,
-          currentFilePath: s.currentFilePath === oldPath ? newPath : s.currentFilePath,
-          currentContent: s.currentFilePath === oldPath ? s.currentContent : s.currentContent,
+          currentFilePath: newCurrentFilePath,
         };
       });
     },
@@ -563,7 +708,11 @@ function createVaultStore() {
     },
 
     closeVault() {
-      if (saveTimer) clearTimeout(saveTimer);
+      if (fileWatcherUnlisten) {
+        fileWatcherUnlisten();
+        fileWatcherUnlisten = null;
+      }
+      this.ensureSaved();
       // Persist session before clearing
       let snapshot: VaultState | undefined;
       const unsub = subscribe((s) => { snapshot = s; });

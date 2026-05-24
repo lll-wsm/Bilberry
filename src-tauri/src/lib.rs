@@ -27,6 +27,11 @@ struct AppState {
     frontend_ready: AtomicBool,
 }
 
+pub struct WatcherState {
+    pub watchers: Mutex<std::collections::HashMap<String, vault::FileWatcher>>,
+}
+
+
 #[tauri::command]
 fn notify_frontend_ready(app: tauri::AppHandle, state: State<'_, AppState>) {
     state.frontend_ready.store(true, Ordering::SeqCst);
@@ -269,7 +274,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
-        .manage(commands::SearchState(Mutex::new(None)));
+        .manage(commands::SearchState(Mutex::new(None)))
+        .manage(WatcherState {
+            watchers: Mutex::new(std::collections::HashMap::new()),
+        });
 
     #[cfg(target_os = "macos")]
     {

@@ -56,6 +56,38 @@ impl SearchIndex {
         Ok(())
     }
 
+    /// Update index for a single file (called on create/modify)
+    pub fn update_file(&mut self, path: &str) -> Result<(), String> {
+        let content = read_file_safe(path);
+        let filename_title = Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let display_title = content
+            .lines()
+            .find(|l| l.starts_with("# "))
+            .map(|l| l.trim_start_matches("# ").to_string())
+            .unwrap_or(filename_title);
+
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.title = display_title;
+            entry.content = content;
+        } else {
+            self.entries.push(SearchEntry {
+                path: path.to_string(),
+                title: display_title,
+                content,
+            });
+        }
+        Ok(())
+    }
+
+    /// Remove a file from the index (called on delete)
+    pub fn remove_file(&mut self, path: &str) {
+        self.entries.retain(|e| e.path != path);
+    }
+
     /// Search for query string across all indexed content
     pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>, String> {
         let query_lower = query_str.to_lowercase();

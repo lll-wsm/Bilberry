@@ -128,8 +128,16 @@
       unlisteners.push(...listeners);
 
       // Save session when the window is about to close (window button, Cmd+W, Cmd+Q)
-      getCurrentWindow().onCloseRequested(() => {
-        vaultStore.closeVault();
+      getCurrentWindow().onCloseRequested(async (event) => {
+        event.preventDefault();
+        try {
+          await vaultStore.ensureSaved();
+          vaultStore.closeVault();
+        } catch (err) {
+          console.error("Failed to save changes before closing:", err);
+        } finally {
+          getCurrentWindow().destroy();
+        }
       }).then((unlisten) => unlisteners.push(unlisten));
       await invoke("notify_frontend_ready");
     };
