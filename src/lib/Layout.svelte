@@ -5,6 +5,7 @@
   import { settingsStore } from "../stores/settings";
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
   import { applyTheme, initPreviewThemeSync } from "./preview/themes";
+  import { editorStore, triggerFindCount, triggerPreviewFindCount } from "../stores/editor";
 
   // Apply the cached preview theme immediately to prevent flash
   initPreviewThemeSync();
@@ -35,6 +36,11 @@
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") isCtrlPressed = true;
       if (e.key === "Meta" || e.key === "Command") isMetaPressed = true;
+
+      if ((e.key === "f" || e.key === "F") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleTriggerFind();
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Control") isCtrlPressed = false;
@@ -85,6 +91,9 @@
       const listeners = await Promise.all([
         listen("menu-show-settings", () => {
           showSettings = true;
+        }),
+        listen("menu-find", () => {
+          handleTriggerFind();
         }),
         listen("menu-create-vault", () => {
           handleCreateVault();
@@ -255,6 +264,16 @@
         await removeFromHistory(path);
         recentDirs = await loadHistory();
       }
+    }
+  }
+
+  function handleTriggerFind() {
+    if (!$vaultStore.currentFilePath) return;
+
+    if ($editorStore.mode === "preview") {
+      triggerPreviewFindCount.update(n => n + 1);
+    } else {
+      triggerFindCount.update(n => n + 1);
     }
   }
 

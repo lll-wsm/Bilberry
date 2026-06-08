@@ -1,12 +1,14 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { vaultStore } from "../../stores/vault";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, resolveRelativePath, type RenderResult } from "./markdown";
   import { themes } from "./themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
+  import { ChevronUp, ChevronDown, X, CaseSensitive } from "lucide-svelte";
+  import { triggerPreviewFindCount } from "../../stores/editor";
 
   let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange, embedded = false }: {
     source?: string;
@@ -20,6 +22,210 @@
   let container: HTMLDivElement;
   let result: RenderResult | undefined = $state.raw();
   let renderError: string | null = $state(null);
+
+  // Find in page state
+  let findQuery = $state("");
+  let inputValue = $state("");
+  let findWidgetVisible = $state(false);
+  let findMatches = $state<HTMLElement[]>([]);
+  let findCurrentIndex = $state(-1);
+  let findCaseSensitive = $state(false);
+  let findInputEl: HTMLInputElement | null = $state(null);
+  let isComposing = false;
+
+  function highlightMatches(targetContainer: HTMLElement, query: string, caseSensitive: boolean): HTMLElement[] {
+    const matches: HTMLElement[] = [];
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escapedQuery, caseSensitive ? "g" : "gi");
+
+    function walk(node: Node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (
+          el.tagName === "SCRIPT" ||
+          el.tagName === "STYLE" ||
+          el.tagName === "NOSCRIPT" ||
+          el.classList.contains("preview-find-widget") ||
+          el.classList.contains("mermaid-container") ||
+          el.classList.contains("link-preview-popover")
+        ) {
+          return;
+        }
+        const children = Array.from(el.childNodes);
+        for (const child of children) {
+          walk(child);
+        }
+      } else if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue || "";
+        if (!escapedQuery) return;
+        
+        regex.lastIndex = 0;
+        let match;
+        const fragments: Node[] = [];
+        let lastIndex = 0;
+
+        while ((match = regex.exec(text)) !== null) {
+          const matchText = match[0];
+          const matchIndex = match.index;
+
+          if (matchIndex > lastIndex) {
+            fragments.push(document.createTextNode(text.substring(lastIndex, matchIndex)));
+          }
+
+          const mark = document.createElement("mark");
+          mark.className = "preview-find-match";
+          mark.textContent = matchText;
+          fragments.push(mark);
+          matches.push(mark);
+
+          lastIndex = regex.lastIndex;
+          if (match[0].length === 0) regex.lastIndex++;
+        }
+
+        if (fragments.length > 0) {
+          if (lastIndex < text.length) {
+            fragments.push(document.createTextNode(text.substring(lastIndex)));
+          }
+          const parent = node.parentNode;
+          if (parent) {
+            const next = node.nextSibling;
+            parent.removeChild(node);
+            fragments.forEach(frag => {
+              parent.insertBefore(frag, next);
+            });
+          }
+        }
+      }
+    }
+
+    walk(targetContainer);
+    return matches;
+  }
+
+  function unhighlightMatches() {
+    if (!container) return;
+    const marks = container.querySelectorAll("mark.preview-find-match");
+    marks.forEach(mark => {
+      const parent = mark.parentNode;
+      if (parent) {
+        const textNode = document.createTextNode(mark.textContent || "");
+        parent.replaceChild(textNode, mark);
+      }
+    });
+    const markdownBody = container.querySelector(".markdown-body") as HTMLElement;
+    if (markdownBody) {
+      markdownBody.normalize();
+    }
+  }
+
+  function highlightCurrentMatch(scroll = true) {
+    findMatches.forEach((match, idx) => {
+      if (idx === findCurrentIndex) {
+        match.classList.add("preview-find-match-current");
+        if (scroll) {
+          match.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      } else {
+        match.classList.remove("preview-find-match-current");
+      }
+    });
+  }
+
+  function nextMatch() {
+    if (findMatches.length === 0) return;
+    findCurrentIndex = (findCurrentIndex + 1) % findMatches.length;
+    highlightCurrentMatch(true);
+  }
+
+  function prevMatch() {
+    if (findMatches.length === 0) return;
+    findCurrentIndex = (findCurrentIndex - 1 + findMatches.length) % findMatches.length;
+    highlightCurrentMatch(true);
+  }
+
+  function closeFindWidget() {
+    findWidgetVisible = false;
+    findQuery = "";
+    inputValue = "";
+    unhighlightMatches();
+    findMatches = [];
+    findCurrentIndex = -1;
+  }
+
+  function handleInput(e: Event) {
+    const target = e.target as HTMLInputElement;
+    inputValue = target.value;
+    if (!isComposing) {
+      findQuery = target.value;
+    }
+  }
+
+  function handleCompositionStart() {
+    isComposing = true;
+  }
+
+  function handleCompositionEnd(e: CompositionEvent) {
+    isComposing = false;
+    const target = e.target as HTMLInputElement;
+    inputValue = target.value;
+    findQuery = target.value;
+  }
+
+  function handleInputKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        prevMatch();
+      } else {
+        nextMatch();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeFindWidget();
+    }
+  }
+
+  $effect(() => {
+    const tickCount = $triggerPreviewFindCount;
+    if (tickCount > 0) {
+      findWidgetVisible = true;
+      inputValue = "";
+      findQuery = "";
+      tick().then(() => {
+        if (findInputEl) {
+          findInputEl.focus();
+          findInputEl.select();
+        }
+      });
+    }
+  });
+
+  $effect(() => {
+    const query = findQuery;
+    const caseSensitive = findCaseSensitive;
+    const _html = html;
+    if (!container) return;
+    
+    untrack(() => {
+      unhighlightMatches();
+      
+      if (query.trim()) {
+        const markdownBody = container.querySelector(".markdown-body") as HTMLElement;
+        if (markdownBody) {
+          findMatches = highlightMatches(markdownBody, query, caseSensitive);
+          if (findMatches.length > 0) {
+            findCurrentIndex = 0;
+            highlightCurrentMatch(true);
+          } else {
+            findCurrentIndex = -1;
+          }
+        }
+      } else {
+        findMatches = [];
+        findCurrentIndex = -1;
+      }
+    });
+  });
 
   function getMimeType(filePath: string): string {
     const lower = filePath.toLowerCase();
@@ -367,40 +573,101 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div 
-  bind:this={container} 
-  class="preview" 
-  class:embedded
-  onscroll={handleScroll} 
-  onclick={handleLinkClick}
-  onmousemove={handleHover}
-  onmouseleave={hidePreview}
->
-  {#if renderError}
-    <div class="render-error">
-      <strong>渲染错误:</strong> {renderError}
-    </div>
-  {:else if html}
-    <div
-      class="markdown-body"
-      style:font-size="{$settingsStore.fontSize}px"
-      style:line-height={$settingsStore.lineHeight}
-      style:font-family={$settingsStore.fontFamily}
-    >{@html html}</div>
-  {:else}
-    <div class="empty">
-      <p>暂无内容</p>
+<div class="preview-wrapper" class:embedded>
+  {#if findWidgetVisible}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="preview-find-widget" class:embedded onkeydown={(e) => e.stopPropagation()}>
+      <div class="find-input-container">
+        <input
+          bind:this={findInputEl}
+          type="text"
+          placeholder="查找..."
+          value={inputValue}
+          oninput={handleInput}
+          oncompositionstart={handleCompositionStart}
+          oncompositionend={handleCompositionEnd}
+          onkeydown={handleInputKeydown}
+        />
+        <button 
+          class="toggle-btn" 
+          class:active={findCaseSensitive} 
+          onclick={() => findCaseSensitive = !findCaseSensitive}
+          title="区分大小写"
+        >
+          <CaseSensitive size={16} />
+        </button>
+      </div>
+      
+      <div class="find-actions">
+        <span class="find-count">
+          {#if findMatches.length > 0}
+            {findCurrentIndex + 1} / {findMatches.length}
+          {:else}
+            无结果
+          {/if}
+        </span>
+        <button 
+          class="action-btn" 
+          onclick={prevMatch} 
+          disabled={findMatches.length === 0}
+          title="上一个 (Shift+Enter)"
+        >
+          <ChevronUp size={16} />
+        </button>
+        <button 
+          class="action-btn" 
+          onclick={nextMatch} 
+          disabled={findMatches.length === 0}
+          title="下一个 (Enter)"
+        >
+          <ChevronDown size={16} />
+        </button>
+        <button 
+          class="action-btn close-btn" 
+          onclick={closeFindWidget}
+          title="关闭 (Esc)"
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
   {/if}
 
-  <LinkPreview 
-    visible={previewVisible} 
-    content={previewContent} 
-    x={previewX} 
-    y={previewY} 
-    placement={previewPlacement}
-  />
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div 
+    bind:this={container} 
+    class="preview" 
+    class:embedded
+    onscroll={handleScroll} 
+    onclick={handleLinkClick}
+    onmousemove={handleHover}
+    onmouseleave={hidePreview}
+  >
+    {#if renderError}
+      <div class="render-error">
+        <strong>渲染错误:</strong> {renderError}
+      </div>
+    {:else if html}
+      <div
+        class="markdown-body"
+        style:font-size="{$settingsStore.fontSize}px"
+        style:line-height={$settingsStore.lineHeight}
+        style:font-family={$settingsStore.fontFamily}
+      >{@html html}</div>
+    {:else}
+      <div class="empty">
+        <p>暂无内容</p>
+      </div>
+    {/if}
+
+    <LinkPreview 
+      visible={previewVisible} 
+      content={previewContent} 
+      x={previewX} 
+      y={previewY} 
+      placement={previewPlacement}
+    />
+  </div>
 </div>
 
 <style>
@@ -839,11 +1106,158 @@
     color: var(--alert-caution-border);
   }
 
-  .preview :global(.markdown-alert-content > :first-child) {
-    margin-top: 0;
+  .preview-alert-content > :last-child {
+    margin-bottom: 0;
   }
 
-  .preview :global(.markdown-alert-content > :last-child) {
-    margin-bottom: 0;
+  .preview-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preview-wrapper.embedded {
+    overflow: visible;
+    height: auto;
+  }
+
+  .preview-find-widget {
+    position: absolute;
+    top: 12px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-divider);
+    border-radius: 6px;
+    padding: 4px 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 250px;
+    font-size: 13px;
+  }
+
+  .preview-find-widget.embedded {
+    display: none;
+  }
+
+  .find-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-divider);
+    border-radius: 4px;
+    padding: 2px 4px;
+    flex: 1;
+  }
+
+  .find-input-container:focus-within {
+    border-color: var(--interactive-accent);
+  }
+
+  .find-input-container input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-normal);
+    font-size: 13px;
+    padding: 2px 4px;
+    width: 120px;
+  }
+
+  .toggle-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 3px;
+    padding: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s ease;
+  }
+
+  .toggle-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-normal);
+  }
+
+  .toggle-btn.active {
+    background: var(--interactive-accent);
+    color: #ffffff;
+  }
+
+  .find-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .find-count {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    min-width: 45px;
+    text-align: center;
+    user-select: none;
+  }
+
+  .action-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-normal);
+    border-radius: 3px;
+    padding: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s ease;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  .action-btn:disabled {
+    color: var(--text-muted);
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .close-btn:hover {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #ef4444;
+  }
+
+  /* Highlighting matches */
+  :global(.preview-find-match) {
+    background-color: rgba(255, 235, 59, 0.45) !important;
+    border-radius: 2px;
+    transition: background-color 0.1s ease;
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.2);
+  }
+
+  :global(.preview-find-match-current) {
+    background-color: rgba(255, 152, 0, 0.75) !important;
+    outline: 1.5px solid var(--interactive-accent);
+    box-shadow: 0 0 4px var(--interactive-accent);
+  }
+
+  :global(.dark) :global(.preview-find-match) {
+    background-color: rgba(255, 235, 59, 0.25) !important;
+    color: inherit;
+  }
+
+  :global(.dark) :global(.preview-find-match-current) {
+    background-color: rgba(255, 152, 0, 0.55) !important;
+    color: inherit;
   }
 </style>

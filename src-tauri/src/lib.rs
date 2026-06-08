@@ -153,6 +153,10 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&close_window)
         .build()?;
 
+    let find = MenuItemBuilder::with_id("find", "Find...")
+        .accelerator("CmdOrCtrl+F")
+        .build(app)?;
+
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .item(&PredefinedMenuItem::undo(app, None)?)
         .item(&PredefinedMenuItem::redo(app, None)?)
@@ -162,6 +166,8 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&PredefinedMenuItem::paste(app, None)?)
         .separator()
         .item(&PredefinedMenuItem::select_all(app, None)?)
+        .separator()
+        .item(&find)
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app, "View")
@@ -316,6 +322,9 @@ pub fn run() {
             match id {
                 "settings" => {
                     app.emit("menu-show-settings", ()).ok();
+                }
+                "find" => {
+                    app.emit("menu-find", ()).ok();
                 }
                 "create_vault" => {
                     app.emit("menu-create-vault", ()).ok();

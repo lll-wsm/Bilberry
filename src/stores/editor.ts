@@ -6,6 +6,9 @@ export const pendingNavRange = writable<{anchor: number; head: number} | null>(n
 /// Increment to trigger CodeMirror's find panel in the active editor
 export const triggerFindCount = writable(0);
 
+/// Increment to trigger preview search panel
+export const triggerPreviewFindCount = writable(0);
+
 export type EditorMode = "split" | "preview" | "source";
 
 interface EditorState {
