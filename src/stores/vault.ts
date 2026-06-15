@@ -209,6 +209,7 @@ function createVaultStore() {
       });
     },
     async openVault(path: string) {
+      await this.ensureSaved();
       update((s) => ({ ...s, loading: true }));
       try {
         const vault = await invoke<Vault>("open_vault", { path });
@@ -223,6 +224,9 @@ function createVaultStore() {
           loading: false,
           scrollPositions: session?.scrollPositions || {},
         }));
+
+        lastSavedContent = "";
+        lastSavedEncoding = "UTF-8";
 
         // Restore tabs
         if (session && session.openTabs.length > 0) {
@@ -369,6 +373,8 @@ function createVaultStore() {
       });
       if (focus) {
         editorStore.syncModeForFile(isPreviewableTextPath(path));
+        lastSavedContent = "";
+        lastSavedEncoding = encoding;
       }
       try {
         const content = isImagePath(path)
@@ -622,7 +628,10 @@ function createVaultStore() {
       let current: VaultState | undefined;
       const unsub = subscribe((s) => { current = s; });
       unsub();
-      if (current?.currentFilePath && (lastSavedContent !== current.currentContent || lastSavedEncoding !== current.currentEncoding)) {
+
+      if (!current || current.loading || !current.currentFilePath) return;
+
+      if (lastSavedContent !== current.currentContent || lastSavedEncoding !== current.currentEncoding) {
         await invoke("write_note", { 
           path: current.currentFilePath, 
           content: current.currentContent, 
