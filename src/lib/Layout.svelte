@@ -175,7 +175,9 @@
       // Open the parent directory as vault, then open the file
       const parentDir = path.substring(0, path.lastIndexOf("/"));
       try {
-        await vaultStore.openVault(parentDir);
+        if ($vaultStore.vault?.path !== parentDir) {
+          await vaultStore.openVault(parentDir);
+        }
         await vaultStore.openNote(path);
         addToRecent(path, "file");
       } catch {
