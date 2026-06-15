@@ -7,8 +7,6 @@
   import { applyTheme, initPreviewThemeSync } from "./preview/themes";
   import { editorStore, triggerFindCount, triggerPreviewFindCount } from "../stores/editor";
 
-  // Apply the cached preview theme immediately to prevent flash
-  initPreviewThemeSync();
   import Sidebar from "./Sidebar.svelte";
   import EditorPanel from "./editor/EditorPanel.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -21,6 +19,9 @@
   import ContextMenu from "./ui/ContextMenu.svelte";
   import Titlebar from "./ui/Titlebar.svelte";
   import MenuBar from "./ui/MenuBar.svelte";
+
+  // Apply the cached preview theme immediately to prevent flash
+  initPreviewThemeSync();
 
   let sidebarOpen = $state(true);
   let recentDirs = $state<string[]>([]);
@@ -221,7 +222,9 @@
         }
       } else {
         try {
-          await vaultStore.openVault(selected);
+          if ($vaultStore.vault?.path !== selected) {
+            await vaultStore.openVault(selected);
+          }
           await addToHistory(selected);
           recentDirs = await loadHistory();
         } catch (e) {
@@ -240,7 +243,9 @@
     });
     if (selected) {
       try {
-        await vaultStore.openVault(selected);
+        if ($vaultStore.vault?.path !== selected) {
+          await vaultStore.openVault(selected);
+        }
         await addToHistory(selected);
         recentDirs = await loadHistory();
       } catch (e) {
@@ -258,7 +263,9 @@
       }
     } else {
       try {
-        await vaultStore.openVault(path);
+        if ($vaultStore.vault?.path !== path) {
+          await vaultStore.openVault(path);
+        }
         await addToHistory(path);
         recentDirs = await loadHistory();
       } catch (e) {
