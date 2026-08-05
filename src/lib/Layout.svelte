@@ -41,6 +41,13 @@
     // native application menu in sync.
     initI18n();
 
+    // Single source of truth for the native Theme menu: push the preview theme
+    // list so the macOS menu shows exactly the themes the app ships (instead
+    // of a hardcoded Rust-side copy that can drift).
+    invoke("set_theme_list", {
+      themes: previewThemes.map((t) => ({ id: t.id, label: t.label, mode: t.mode })),
+    }).catch(() => {});
+
 
     let disposed = false;
     let hasOpenedFile = false;

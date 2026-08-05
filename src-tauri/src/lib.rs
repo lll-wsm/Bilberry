@@ -38,12 +38,24 @@ fn new_file_window(app: tauri::AppHandle) {
 
 static WINDOW_COUNT: AtomicU32 = AtomicU32::new(1);
 
+/// A preview theme as shipped by the frontend (`src/lib/themes/preview-themes.ts`
+/// is the single source of truth). The frontend pushes the list at startup via
+/// `set_theme_list` so the native Theme menu always matches the app.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct ThemeInfo {
+    id: String,
+    label: String,
+    /// "light" or "dark"
+    mode: String,
+}
+
 struct AppState {
     pending_files: Mutex<Vec<String>>,
     frontend_ready: AtomicBool,
     menu_language: Mutex<String>,
     theme: Mutex<String>,
     preview_theme: Mutex<String>,
+    theme_list: Mutex<Vec<ThemeInfo>>,
 }
 
 pub struct WatcherState {
@@ -145,19 +157,6 @@ fn current_preview_theme(app: &tauri::AppHandle) -> String {
                 .unwrap_or_else(|_| "system".to_string())
         })
         .unwrap_or_else(|| "system".to_string())
-}
-
-/// All available preview themes: (id, label, mode).
-/// Kept in sync with `src/lib/themes/preview-themes.ts`.
-fn theme_list() -> &'static [(&'static str, &'static str, &'static str)] {
-    &[
-        ("default", "Default", "light"),
-        ("solarized-light", "Solarized Light", "light"),
-        ("typo", "Typo", "light"),
-        ("cobalt", "Cobalt", "dark"),
-        ("solarized-dark", "Solarized Dark", "dark"),
-        ("toothpaste", "Toothpaste", "dark"),
-    ]
 }
 
 fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
@@ -342,39 +341,48 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .build()?;
 
     // Theme menu: System + all preview themes grouped into Light/Dark submenus.
-    // The checked item follows the preview theme stored via `set_preview_theme`;
-    // selecting an item emits an event so the frontend applies the theme and
-    // echoes it back through `set_preview_theme`.
+    // The list comes from the frontend via `set_theme_list` (single source of
+    // truth: `src/lib/themes/preview-themes.ts`), so the menu always matches
+    // the themes the app ships. The checked item follows the preview theme
+    // stored via `set_preview_theme`; selecting an item emits an event so the
+    // frontend applies the theme and echoes it back through `set_preview_theme`.
     let current_preview = current_preview_theme(app);
 
-    let theme_system = CheckMenuItemBuilder::with_id("theme_system", menu_label(&language, "theme_system"))
-        .checked(current_preview == "system")
-        .build(app)?;
+    let themes = app
+        .try_state::<AppState>()
+        .map(|s| s.theme_list.lock().map(|g| g.clone()).unwrap_or_default())
+        .unwrap_or_default();
 
-    let mut light_builder = SubmenuBuilder::new(app, menu_label(&language, "theme_light"));
-    for (id, label, _mode) in theme_list().iter().filter(|(_, _, m)| *m == "light") {
-        let item = CheckMenuItemBuilder::with_id(&format!("theme_preview_{}", id), label)
-            .checked(current_preview == *id)
-            .build(app)?;
-        light_builder = light_builder.item(&item);
+    let mut theme_menu_builder = SubmenuBuilder::new(app, menu_label(&language, "theme"))
+        .item(
+            &CheckMenuItemBuilder::with_id("theme_system", menu_label(&language, "theme_system"))
+                .checked(current_preview == "system")
+                .build(app)?,
+        );
+
+    let mut added_submenu = false;
+    for mode in ["light", "dark"] {
+        let entries: Vec<&ThemeInfo> = themes.iter().filter(|t| t.mode == mode).collect();
+        if entries.is_empty() {
+            continue;
+        }
+        let label_key = if mode == "light" { "theme_light" } else { "theme_dark" };
+        let mut submenu = SubmenuBuilder::new(app, menu_label(&language, label_key));
+        for t in entries {
+            submenu = submenu.item(
+                &CheckMenuItemBuilder::with_id(&format!("theme_preview_{}", t.id), &t.label)
+                    .checked(current_preview == t.id)
+                    .build(app)?,
+            );
+        }
+        if !added_submenu {
+            theme_menu_builder = theme_menu_builder.separator();
+            added_submenu = true;
+        }
+        theme_menu_builder = theme_menu_builder.item(&submenu.build()?);
     }
-    let light_submenu = light_builder.build()?;
 
-    let mut dark_builder = SubmenuBuilder::new(app, menu_label(&language, "theme_dark"));
-    for (id, label, _mode) in theme_list().iter().filter(|(_, _, m)| *m == "dark") {
-        let item = CheckMenuItemBuilder::with_id(&format!("theme_preview_{}", id), label)
-            .checked(current_preview == *id)
-            .build(app)?;
-        dark_builder = dark_builder.item(&item);
-    }
-    let dark_submenu = dark_builder.build()?;
-
-    let theme_menu = SubmenuBuilder::new(app, menu_label(&language, "theme"))
-        .item(&theme_system)
-        .separator()
-        .item(&light_submenu)
-        .item(&dark_submenu)
-        .build()?;
+    let theme_menu = theme_menu_builder.build()?;
 
     MenuBuilder::new(app)
         .item(&app_menu)
@@ -436,6 +444,19 @@ fn set_preview_theme(app: tauri::AppHandle, state: State<'_, AppState>, theme: S
     }
 }
 
+/// Stores the preview theme list sent by the frontend (the single source of
+/// truth is `src/lib/themes/preview-themes.ts`) and rebuilds the native menu,
+/// so the Theme submenu shows exactly the themes the app actually ships.
+#[tauri::command]
+fn set_theme_list(app: tauri::AppHandle, state: State<'_, AppState>, themes: Vec<ThemeInfo>) {
+    let mut current = state.theme_list.lock().unwrap();
+    if *current != themes {
+        *current = themes;
+        drop(current);
+        rebuild_menu(&app);
+    }
+}
+
 #[tauri::command]
 fn open_in_new_window(app: tauri::AppHandle, vault_path: Option<String>, file_path: Option<String>) {
     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
@@ -490,6 +511,7 @@ pub fn run() {
             menu_language: Mutex::new("en".to_string()),
             theme: Mutex::new("system".to_string()),
             preview_theme: Mutex::new("system".to_string()),
+            theme_list: Mutex::new(Vec::new()),
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -660,6 +682,7 @@ pub fn run() {
             set_language,
             set_theme,
             set_preview_theme,
+            set_theme_list,
             notify_frontend_ready,
             get_pending_files,
             create_new_window,
