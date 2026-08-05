@@ -1,14 +1,15 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { tick, untrack } from "svelte";
+  import { tick } from "svelte";
   import { vaultStore } from "../../stores/vault";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, resolveRelativePath, type RenderResult } from "./markdown";
   import { previewThemes } from "../themes/preview-themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
-  import { ChevronUp, ChevronDown, X, CaseSensitive } from "lucide-svelte";
-  import { triggerPreviewFindCount } from "../../stores/editor";
+  import { useLinkPreview } from "../ui/useLinkPreview.svelte";
+  import PreviewFind from "./PreviewFind.svelte";
+  import { findFile } from "../vault/findFile";
   import { t } from "../i18n/i18n.svelte";
 
   let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange, embedded = false }: {
@@ -20,213 +21,9 @@
     embedded?: boolean;
   } = $props();
 
-  let container: HTMLDivElement;
+  let container = $state<HTMLDivElement>();
   let result: RenderResult | undefined = $state.raw();
   let renderError: string | null = $state(null);
-
-  // Find in page state
-  let findQuery = $state("");
-  let inputValue = $state("");
-  let findWidgetVisible = $state(false);
-  let findMatches = $state<HTMLElement[]>([]);
-  let findCurrentIndex = $state(-1);
-  let findCaseSensitive = $state(false);
-  let findInputEl: HTMLInputElement | null = $state(null);
-  let isComposing = false;
-
-  function highlightMatches(targetContainer: HTMLElement, query: string, caseSensitive: boolean): HTMLElement[] {
-    const matches: HTMLElement[] = [];
-    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(escapedQuery, caseSensitive ? "g" : "gi");
-
-    function walk(node: Node) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const el = node as HTMLElement;
-        if (
-          el.tagName === "SCRIPT" ||
-          el.tagName === "STYLE" ||
-          el.tagName === "NOSCRIPT" ||
-          el.classList.contains("preview-find-widget") ||
-          el.classList.contains("mermaid-container") ||
-          el.classList.contains("link-preview-popover")
-        ) {
-          return;
-        }
-        const children = Array.from(el.childNodes);
-        for (const child of children) {
-          walk(child);
-        }
-      } else if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.nodeValue || "";
-        if (!escapedQuery) return;
-        
-        regex.lastIndex = 0;
-        let match;
-        const fragments: Node[] = [];
-        let lastIndex = 0;
-
-        while ((match = regex.exec(text)) !== null) {
-          const matchText = match[0];
-          const matchIndex = match.index;
-
-          if (matchIndex > lastIndex) {
-            fragments.push(document.createTextNode(text.substring(lastIndex, matchIndex)));
-          }
-
-          const mark = document.createElement("mark");
-          mark.className = "preview-find-match";
-          mark.textContent = matchText;
-          fragments.push(mark);
-          matches.push(mark);
-
-          lastIndex = regex.lastIndex;
-          if (match[0].length === 0) regex.lastIndex++;
-        }
-
-        if (fragments.length > 0) {
-          if (lastIndex < text.length) {
-            fragments.push(document.createTextNode(text.substring(lastIndex)));
-          }
-          const parent = node.parentNode;
-          if (parent) {
-            const next = node.nextSibling;
-            parent.removeChild(node);
-            fragments.forEach(frag => {
-              parent.insertBefore(frag, next);
-            });
-          }
-        }
-      }
-    }
-
-    walk(targetContainer);
-    return matches;
-  }
-
-  function unhighlightMatches() {
-    if (!container) return;
-    const marks = container.querySelectorAll("mark.preview-find-match");
-    marks.forEach(mark => {
-      const parent = mark.parentNode;
-      if (parent) {
-        const textNode = document.createTextNode(mark.textContent || "");
-        parent.replaceChild(textNode, mark);
-      }
-    });
-    const markdownBody = container.querySelector(".markdown-body") as HTMLElement;
-    if (markdownBody) {
-      markdownBody.normalize();
-    }
-  }
-
-  function highlightCurrentMatch(scroll = true) {
-    findMatches.forEach((match, idx) => {
-      if (idx === findCurrentIndex) {
-        match.classList.add("preview-find-match-current");
-        if (scroll) {
-          match.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      } else {
-        match.classList.remove("preview-find-match-current");
-      }
-    });
-  }
-
-  function nextMatch() {
-    if (findMatches.length === 0) return;
-    findCurrentIndex = (findCurrentIndex + 1) % findMatches.length;
-    highlightCurrentMatch(true);
-  }
-
-  function prevMatch() {
-    if (findMatches.length === 0) return;
-    findCurrentIndex = (findCurrentIndex - 1 + findMatches.length) % findMatches.length;
-    highlightCurrentMatch(true);
-  }
-
-  function closeFindWidget() {
-    findWidgetVisible = false;
-    findQuery = "";
-    inputValue = "";
-    unhighlightMatches();
-    findMatches = [];
-    findCurrentIndex = -1;
-  }
-
-  function handleInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    inputValue = target.value;
-    if (!isComposing) {
-      findQuery = target.value;
-    }
-  }
-
-  function handleCompositionStart() {
-    isComposing = true;
-  }
-
-  function handleCompositionEnd(e: CompositionEvent) {
-    isComposing = false;
-    const target = e.target as HTMLInputElement;
-    inputValue = target.value;
-    findQuery = target.value;
-  }
-
-  function handleInputKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (e.shiftKey) {
-        prevMatch();
-      } else {
-        nextMatch();
-      }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      closeFindWidget();
-    }
-  }
-
-  $effect(() => {
-    const tickCount = $triggerPreviewFindCount;
-    if (tickCount > 0) {
-      findWidgetVisible = true;
-      inputValue = "";
-      findQuery = "";
-      tick().then(() => {
-        if (findInputEl) {
-          findInputEl.focus();
-          findInputEl.select();
-        }
-      });
-    }
-  });
-
-  $effect(() => {
-    const query = findQuery;
-    const caseSensitive = findCaseSensitive;
-    const _html = html;
-    if (!container) return;
-    
-    untrack(() => {
-      unhighlightMatches();
-      
-      if (query.trim()) {
-        const markdownBody = container.querySelector(".markdown-body") as HTMLElement;
-        if (markdownBody) {
-          findMatches = highlightMatches(markdownBody, query, caseSensitive);
-          if (findMatches.length > 0) {
-            findCurrentIndex = 0;
-            highlightCurrentMatch(true);
-          } else {
-            findCurrentIndex = -1;
-          }
-        }
-      } else {
-        findMatches = [];
-        findCurrentIndex = -1;
-      }
-    });
-  });
 
   function getMimeType(filePath: string): string {
     const lower = filePath.toLowerCase();
@@ -376,49 +173,12 @@
 
   let html = $derived(result?.html ?? "");
 
-  const findFile = (entries: any[], targetPath: string): string | null => {
-    const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
-    
-    for (const entry of entries) {
-      if (!entry.is_dir) {
-        const entryPath = entry.path.toLowerCase();
-        // Exact match check first (for absolute/resolved paths)
-        if (entryPath === targetPath.toLowerCase() || entryPath === (targetPath + ".md").toLowerCase()) {
-          return entry.path;
-        }
-        
-        const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
-        
-        // Match A: Full path ending match (e.g., "folder/file" matches ".../folder/file.md")
-        if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
-          return entry.path;
-        }
-        
-        // Match B: Just filename match (e.g., "file" matches "any/folder/file.md")
-        if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
-          return entry.path;
-        }
-      }
-      
-      if (entry.children) {
-        const found = findFile(entry.children, targetPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
+  const preview = useLinkPreview(() => currentFilePath);
 
-  let previewVisible = $state(false);
-  let previewContent = $state("");
-  let previewX = $state(0);
-  let previewY = $state(0);
-  let previewPlacement = $state<"top" | "bottom">("bottom");
-  let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  async function handleHover(e: MouseEvent) {
+  function handleHover(e: MouseEvent) {
     let link = (e.target as HTMLElement).closest(".wikilink") as HTMLElement;
     const isOverPopover = (e.target as HTMLElement).closest(".link-preview-popover");
-    
+
     // Check if it's a standard local link (exclude external protocols)
     if (!link) {
       const anchor = (e.target as HTMLElement).closest("a") as HTMLAnchorElement;
@@ -433,85 +193,20 @@
     if (link) {
       const targetVal = link.dataset.target || link.getAttribute("href");
       if (!targetVal) return;
-
-      console.log("[Preview Hover] Detected link hover:", targetVal);
-
-      if (hoverTimeout) clearTimeout(hoverTimeout);
-      
-      // If already showing this link's preview, don't restart timeout
-      if (previewVisible && Math.abs(link.getBoundingClientRect().left - previewX) < 1) return;
-
-      hoverTimeout = setTimeout(async () => {
-        let fileName = decodeURIComponent(targetVal);
-        let fullPath: string | null = null;
-        
-        if (currentFilePath) {
-          try {
-            const absPath = resolveRelativePath(decodeURIComponent(targetVal), currentFilePath);
-            console.log("[Preview Hover] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
-            fullPath = findFile($vaultStore.fileTree, absPath);
-          } catch (err) {
-            console.error("[Preview Hover] Error resolving path relative to currentFilePath:", err);
-          }
-        }
-        
-        if (!fullPath) {
-          console.log("[Preview Hover] File not found by relative path, falling back to name search:", fileName);
-          fullPath = findFile($vaultStore.fileTree, fileName);
-        }
-
-        console.log("[Preview Hover] findFile result fullPath:", fullPath);
-
-        if (fullPath) {
-          try {
-            const content = await invoke<string>("read_note", { path: fullPath, encoding: "UTF-8" });
-            previewContent = content; // Show all content
-            
-            const rect = link.getBoundingClientRect();
-            previewX = rect.left;
-            
-            // Adjust X if too close to right edge
-            if (previewX + 420 > window.innerWidth) {
-              previewX = window.innerWidth - 440;
-            }
-            
-            // Determine popover placement based on bottom boundaries
-            if (rect.bottom + 8 + 350 > window.innerHeight) {
-              previewPlacement = "top";
-              previewY = window.innerHeight - rect.top + 8;
-            } else {
-              previewPlacement = "bottom";
-              previewY = rect.bottom + 8;
-            }
-
-            previewVisible = true;
-          } catch (err) {
-            console.error("[Preview Hover] Failed to load preview content:", err);
-          }
-        }
-      }, 400);
+      preview.scheduleShow(targetVal, link.getBoundingClientRect());
     } else if (!isOverPopover) {
-      if (hoverTimeout) clearTimeout(hoverTimeout);
-      hoverTimeout = setTimeout(() => {
-        const popover = document.querySelector(".link-preview-popover:hover");
-        const currentLink = document.querySelector(".wikilink:hover") || document.querySelector("a:hover");
-        if (!popover && !currentLink) {
-          previewVisible = false;
-        }
-      }, 100);
+      preview.deferHide(() => !!(document.querySelector(".wikilink:hover") || document.querySelector("a:hover")));
     }
   }
 
   function hidePreview(e: MouseEvent) {
     const relatedTarget = e.relatedTarget as HTMLElement;
     if (
-      relatedTarget?.closest(".link-preview-popover") || 
-      relatedTarget?.closest(".wikilink") || 
+      relatedTarget?.closest(".link-preview-popover") ||
+      relatedTarget?.closest(".wikilink") ||
       relatedTarget?.closest("a")
     ) return;
-
-    if (hoverTimeout) clearTimeout(hoverTimeout);
-    previewVisible = false;
+    preview.hide();
   }
 
   $effect(() => {
@@ -541,9 +236,7 @@
       const fileName = link.dataset.target;
       if (!fileName) return;
 
-      console.log("[Preview Click] Wikilink clicked:", fileName);
       const fullPath = findFile($vaultStore.fileTree, fileName);
-      console.log("[Preview Click] findFile result:", fullPath);
       if (fullPath) vaultStore.openNote(fullPath);
     } else if (hashtag) {
       e.preventDefault();
@@ -569,13 +262,11 @@
             e.preventDefault();
             
             let resolvedPath = decodeURIComponent(href);
-            console.log("[Preview Click] Local standard link clicked:", resolvedPath);
             let fullPath: string | null = null;
             
             if (currentFilePath) {
               try {
                 const absPath = resolveRelativePath(decodeURIComponent(href), currentFilePath);
-                console.log("[Preview Click] currentFilePath:", currentFilePath, "-> Resolving relative path:", absPath);
                 fullPath = findFile($vaultStore.fileTree, absPath);
               } catch (err) {
                 console.error("[Preview Click] Error resolving path relative to currentFilePath:", err);
@@ -583,11 +274,9 @@
             }
             
             if (!fullPath) {
-              console.log("[Preview Click] File not found by relative path, falling back to name search:", resolvedPath);
               fullPath = findFile($vaultStore.fileTree, resolvedPath);
             }
 
-            console.log("[Preview Click] Final matched fullPath:", fullPath);
             if (fullPath) {
               vaultStore.openNote(fullPath);
             } else {
@@ -601,64 +290,7 @@
 </script>
 
 <div class="preview-wrapper" class:embedded>
-  {#if findWidgetVisible}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="preview-find-widget" class:embedded onkeydown={(e) => e.stopPropagation()}>
-      <div class="find-input-container">
-        <input
-          bind:this={findInputEl}
-          type="text"
-          placeholder={t("preview.findPlaceholder")}
-          value={inputValue}
-          oninput={handleInput}
-          oncompositionstart={handleCompositionStart}
-          oncompositionend={handleCompositionEnd}
-          onkeydown={handleInputKeydown}
-        />
-        <button 
-          class="toggle-btn" 
-          class:active={findCaseSensitive} 
-          onclick={() => findCaseSensitive = !findCaseSensitive}
-          title={t("preview.matchCase")}
-        >
-          <CaseSensitive size={16} />
-        </button>
-      </div>
-      
-      <div class="find-actions">
-        <span class="find-count">
-          {#if findMatches.length > 0}
-            {findCurrentIndex + 1} / {findMatches.length}
-          {:else}
-            {t("preview.noResults")}
-          {/if}
-        </span>
-        <button 
-          class="action-btn" 
-          onclick={prevMatch} 
-          disabled={findMatches.length === 0}
-          title={t("preview.previous")}
-        >
-          <ChevronUp size={16} />
-        </button>
-        <button 
-          class="action-btn" 
-          onclick={nextMatch} 
-          disabled={findMatches.length === 0}
-          title={t("preview.next")}
-        >
-          <ChevronDown size={16} />
-        </button>
-        <button 
-          class="action-btn close-btn" 
-          onclick={closeFindWidget}
-          title={t("preview.close")}
-        >
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-  {/if}
+  <PreviewFind {container} {html} {embedded} />
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div 
@@ -691,12 +323,12 @@
       </div>
     {/if}
 
-    <LinkPreview 
-      visible={previewVisible} 
-      content={previewContent} 
-      x={previewX} 
-      y={previewY} 
-      placement={previewPlacement}
+    <LinkPreview
+      visible={preview.previewVisible}
+      content={preview.previewContent}
+      x={preview.previewX}
+      y={preview.previewY}
+      placement={preview.previewPlacement}
     />
   </div>
 </div>
@@ -1179,142 +811,6 @@
   .preview-wrapper.embedded {
     overflow: visible;
     height: auto;
-  }
-
-  .preview-find-widget {
-    position: absolute;
-    top: 12px;
-    right: 24px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-divider);
-    border-radius: 6px;
-    padding: 4px 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
-    min-width: 250px;
-    font-size: 13px;
-  }
-
-  .preview-find-widget.embedded {
-    display: none;
-  }
-
-  .find-input-container {
-    position: relative;
-    display: flex;
-    align-items: center;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-divider);
-    border-radius: 4px;
-    padding: 2px 4px;
-    flex: 1;
-  }
-
-  .find-input-container:focus-within {
-    border-color: var(--interactive-accent);
-  }
-
-  .find-input-container input {
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--text-normal);
-    font-size: 13px;
-    padding: 2px 4px;
-    width: 120px;
-  }
-
-  .toggle-btn {
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    border-radius: 3px;
-    padding: 2px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.1s ease;
-  }
-
-  .toggle-btn:hover {
-    background: var(--bg-hover);
-    color: var(--text-normal);
-  }
-
-  .toggle-btn.active {
-    background: var(--interactive-accent);
-    color: #ffffff;
-  }
-
-  .find-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .find-count {
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-    font-size: 11px;
-    min-width: 45px;
-    text-align: center;
-    user-select: none;
-  }
-
-  .action-btn {
-    border: none;
-    background: transparent;
-    color: var(--text-normal);
-    border-radius: 3px;
-    padding: 3px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.1s ease;
-  }
-
-  .action-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-
-  .action-btn:disabled {
-    color: var(--text-muted);
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .close-btn:hover {
-    background: rgba(239, 68, 68, 0.2) !important;
-    color: #ef4444;
-  }
-
-  /* Highlighting matches */
-  :global(.preview-find-match) {
-    background-color: rgba(255, 235, 59, 0.45) !important;
-    border-radius: 2px;
-    transition: background-color 0.1s ease;
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.2);
-  }
-
-  :global(.preview-find-match-current) {
-    background-color: rgba(255, 152, 0, 0.75) !important;
-    outline: 1.5px solid var(--interactive-accent);
-    box-shadow: 0 0 4px var(--interactive-accent);
-  }
-
-  :global(.dark) :global(.preview-find-match) {
-    background-color: rgba(255, 235, 59, 0.25) !important;
-    color: inherit;
-  }
-
-  :global(.dark) :global(.preview-find-match-current) {
-    background-color: rgba(255, 152, 0, 0.55) !important;
-    color: inherit;
   }
 
   /* YAML front matter properties panel (Obsidian-style) */

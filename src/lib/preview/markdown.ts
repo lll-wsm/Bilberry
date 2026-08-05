@@ -147,6 +147,15 @@ function isBlockStarter(line: string): boolean {
     || looksLikeStandaloneImage(line);
 }
 
+/**
+ * Split markdown source into typed blocks with stable line/offset ranges.
+ *
+ * Currently used only by tests, but intended for future live-mode block-level
+ * scroll synchronisation between editor and preview (finer-grained than the
+ * current whole-document ratio sync). Kept and tested because it is pure,
+ * working, and represents intended functionality — do not remove without
+ * confirming live sync is off the roadmap.
+ */
 export function splitMarkdownBlocks(src: string): MarkdownBlock[] {
   const normalized = src.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");

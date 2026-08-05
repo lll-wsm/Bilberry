@@ -141,9 +141,7 @@ function createVaultStore() {
       debouncedRefreshTree();
     }
 
-    let state: VaultState | undefined;
-    const unsub = subscribe((s) => { state = s; });
-    unsub();
+    const state = get(vaultStore);
     if (!state) return;
 
     if (type === "rename" && old_path) {
@@ -362,9 +360,7 @@ function createVaultStore() {
       if (!path) return;
 
       // Skip if already the current file
-      let snapshot: VaultState | undefined;
-      const unsub = subscribe((s) => { snapshot = s; });
-      unsub();
+      const snapshot = get(vaultStore);
       if (!snapshot) return;
       if (snapshot.currentFilePath === path) return;
 
@@ -490,9 +486,7 @@ function createVaultStore() {
 
     async openNote(path: string, _focus = true) {
       // Skip if already the current file
-      let snapshot: VaultState | undefined;
-      const unsub = subscribe((s) => { snapshot = s; });
-      unsub();
+      const snapshot = get(vaultStore);
       if (snapshot && snapshot.currentFilePath === path) return;
 
       await this.ensureSaved();
@@ -645,11 +639,8 @@ function createVaultStore() {
 
     async ensureSaved() {
       if (saveTimer) clearTimeout(saveTimer);
-      // Read current state via a one-shot subscription
-      let current: VaultState | undefined;
-      const unsub = subscribe((s) => { current = s; });
-      unsub();
-
+      // Read current state synchronously
+      const current = get(vaultStore);
       if (!current || current.loading || current.isUntitled || !current.currentFilePath) return;
 
       if (lastSavedContent !== current.currentContent || lastSavedEncoding !== current.currentEncoding) {
@@ -752,9 +743,7 @@ function createVaultStore() {
       }
       this.ensureSaved();
       // Persist session before clearing
-      let snapshot: VaultState | undefined;
-      const unsub = subscribe((s) => { snapshot = s; });
-      unsub();
+      const snapshot = get(vaultStore);
       if (snapshot?.vault) {
         persistSession(snapshot);
       }

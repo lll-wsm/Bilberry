@@ -11,8 +11,9 @@ import { onMount, untrack, tick } from "svelte";
   import { vaultStore } from "../../stores/vault";
   import type { Extension } from "@codemirror/state";
   import LinkPreview from "../ui/LinkPreview.svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { useLinkPreview } from "../ui/useLinkPreview.svelte";
   import { resolveRelativePath } from "../preview/markdown";
+  import { findFile } from "../vault/findFile";
 
   let { content = "", readonly = false, onContentChange, onScrollChange, initialScrollRatio = null }: {
     content?: string;
@@ -31,57 +32,12 @@ import { onMount, untrack, tick } from "svelte";
   let hasAppliedInitialScroll = false;
   let lastAppliedScrollRatio: number | null = null;
 
-  // Link preview and navigation state
-  let previewVisible = $state(false);
-  let previewContent = $state("");
-  let previewX = $state(0);
-  let previewY = $state(0);
-  let previewPlacement = $state<"top" | "bottom">("bottom");
-  let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Editor-specific hover tracking (which doc range is currently hovered)
   let hoveredLinkRange: { start: number; end: number } | null = null;
 
   function clearHover() {
-    if (hoverTimeout) {
-      clearTimeout(hoverTimeout);
-      hoverTimeout = null;
-    }
-    setTimeout(() => {
-      const popover = document.querySelector(".link-preview-popover:hover");
-      if (!popover) {
-        previewVisible = false;
-        hoveredLinkRange = null;
-      }
-    }, 100);
+    preview.deferHide(undefined, () => { hoveredLinkRange = null; });
   }
-
-  const findFile = (entries: any[], targetPath: string): string | null => {
-    const normalizedTarget = targetPath.toLowerCase().replace(/\.md$/i, "");
-    
-    for (const entry of entries) {
-      if (!entry.is_dir) {
-        const entryPath = entry.path.toLowerCase();
-        if (entryPath === targetPath.toLowerCase() || entryPath === (targetPath + ".md").toLowerCase()) {
-          return entry.path;
-        }
-        
-        const entryNameNoExt = entry.name.toLowerCase().replace(/\.md$/i, "");
-        
-        if (entryPath.endsWith(normalizedTarget + ".md") || entryPath.endsWith(normalizedTarget)) {
-          return entry.path;
-        }
-        
-        if (entryNameNoExt === normalizedTarget || entryNameNoExt === normalizedTarget.split("/").pop()) {
-          return entry.path;
-        }
-      }
-      
-      if (entry.children) {
-        const found = findFile(entry.children, targetPath);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
 
   interface LinkMatch {
     type: "wikilink" | "markdown";
@@ -140,6 +96,9 @@ import { onMount, untrack, tick } from "svelte";
   const contentPath = $derived($vaultStore.currentFilePath);
   // For untitled documents (no path), default to Markdown highlighting.
   const languagePath = $derived(contentPath ?? ($vaultStore.isUntitled ? "untitled.md" : null));
+
+  // Shared link-hover-preview logic (state + resolve/find/read flow)
+  const preview = useLinkPreview(() => contentPath);
 
   function getThemeExt($theme: string): Extension {
     const baseTheme = $theme === "dark" ? oneDark : [];
@@ -259,62 +218,10 @@ import { onMount, untrack, tick } from "svelte";
 
         hoveredLinkRange = { start: startDocPos, end: endDocPos };
 
-        if (hoverTimeout) clearTimeout(hoverTimeout);
-
-        hoverTimeout = setTimeout(async () => {
-          const targetVal = link.target;
-          console.log("[Editor Hover] Detected link hover:", targetVal);
-
-          let fileName = decodeURIComponent(targetVal);
-          let fullPath: string | null = null;
-          
-          if (contentPath) {
-            try {
-              const absPath = resolveRelativePath(decodeURIComponent(targetVal), contentPath);
-              console.log("[Editor Hover] contentPath:", contentPath, "-> Resolving relative path:", absPath);
-              fullPath = findFile($vaultStore.fileTree, absPath);
-            } catch (err) {
-              console.error("[Editor Hover] Error resolving path relative to contentPath:", err);
-            }
-          }
-          
-          if (!fullPath) {
-            console.log("[Editor Hover] File not found by relative path, falling back to name search:", fileName);
-            fullPath = findFile($vaultStore.fileTree, fileName);
-          }
-
-          console.log("[Editor Hover] findFile result fullPath:", fullPath);
-
-          if (fullPath) {
-            try {
-              const content = await invoke<string>("read_note", { path: fullPath, encoding: "UTF-8" });
-              previewContent = content; // Show all content
-              
-              const startCoords = view.coordsAtPos(startDocPos);
-              if (startCoords) {
-                previewX = startCoords.left;
-                
-                // Adjust X if too close to right edge
-                if (previewX + 420 > window.innerWidth) {
-                  previewX = window.innerWidth - 440;
-                }
-                
-                // Determine placement based on bottom boundaries
-                if (startCoords.bottom + 8 + 350 > window.innerHeight) {
-                  previewPlacement = "top";
-                  previewY = window.innerHeight - startCoords.top + 8;
-                } else {
-                  previewPlacement = "bottom";
-                  previewY = startCoords.bottom + 8;
-                }
-                
-                previewVisible = true;
-              }
-            } catch (err) {
-              console.error("[Editor Hover] Failed to load preview content:", err);
-            }
-          }
-        }, 400);
+        const startCoords = view.coordsAtPos(startDocPos);
+        if (startCoords) {
+          preview.scheduleShow(link.target, startCoords);
+        }
       } else {
         if (scrollerEl) scrollerEl.style.cursor = "";
         clearHover();
@@ -361,7 +268,6 @@ import { onMount, untrack, tick } from "svelte";
         if (contentPath) {
           try {
             const absPath = resolveRelativePath(decodeURIComponent(targetVal), contentPath);
-            console.log("[Editor Click] contentPath:", contentPath, "-> Resolving relative path:", absPath);
             fullPath = findFile($vaultStore.fileTree, absPath);
           } catch (err) {
             console.error("[Editor Click] Error resolving path relative to contentPath:", err);
@@ -369,11 +275,9 @@ import { onMount, untrack, tick } from "svelte";
         }
         
         if (!fullPath) {
-          console.log("[Editor Click] File not found by relative path, falling back to name search:", fileName);
           fullPath = findFile($vaultStore.fileTree, fileName);
         }
 
-        console.log("[Editor Click] Final matched fullPath:", fullPath);
         if (fullPath) {
           vaultStore.openNote(fullPath);
         } else {
@@ -518,11 +422,11 @@ import { onMount, untrack, tick } from "svelte";
   ></div>
 
   <LinkPreview 
-    visible={previewVisible} 
-    content={previewContent} 
-    x={previewX} 
-    y={previewY} 
-    placement={previewPlacement}
+    visible={preview.previewVisible} 
+    content={preview.previewContent} 
+    x={preview.previewX} 
+    y={preview.previewY} 
+    placement={preview.previewPlacement}
   />
 </div>
 
