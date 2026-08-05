@@ -1,14 +1,6 @@
 <script lang="ts">
   import { currentFileIsImage, vaultStore } from "../stores/vault";
   import { editorStore } from "../stores/editor";
-  import { settingsStore } from "../stores/settings";
-  import { Settings } from "lucide-svelte";
-
-  let {
-    onOpenSettings,
-  }: {
-    onOpenSettings?: () => void;
-  } = $props();
 
   let wordCount = $derived(
     $vaultStore.currentContent
@@ -40,17 +32,7 @@
 
 {#if $vaultStore.vault}
   <div class="statusbar">
-    <span class="left">
-      <button class="icon-btn" onclick={onOpenSettings} title="设置">
-        <Settings size={13} />
-      </button>
-      <span class="divider"></span>
-      <span class="file-name">
-        {$vaultStore.currentFilePath
-          ? $vaultStore.currentFilePath.split("/").pop()
-          : "未选择"}
-      </span>
-    </span>
+    <span class="left"></span>
     <span class="right">
       <span class="stat">{wordCount} 词</span>
       <span class="stat">{charCount} 字</span>
@@ -79,8 +61,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--spacing-3);
-    border-top: 1px solid var(--border-divider);
-    background: var(--bg-secondary);
+    background: var(--header-bg);
     color: var(--text-muted);
     font-size: 11px;
     user-select: none;
@@ -93,14 +74,6 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-3);
-  }
-
-  .file-name {
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    opacity: 0.9;
   }
 
   .stat {
@@ -135,30 +108,5 @@
     opacity: 1;
     background: var(--bg-hover);
     border-radius: 3px;
-  }
-
-  .icon-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-muted);
-    padding: 2px;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.1s ease, background 0.1s ease;
-  }
-
-  .icon-btn:hover {
-    color: var(--text-normal);
-    background: var(--bg-hover);
-  }
-
-  .divider {
-    width: 1px;
-    height: 12px;
-    background: var(--border-divider);
-    margin: 0 2px;
   }
 </style>

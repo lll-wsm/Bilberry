@@ -100,8 +100,9 @@
       try {
         await invoke("rename_note", { oldPath: path, newPath });
         await vaultStore.refreshFileTree();
-        // User explicitly asked to close the right-side area after rename
-        vaultStore.closeTab(path);
+        if ($vaultStore.currentFilePath === path || $vaultStore.currentFilePath?.startsWith(path + "/")) {
+          vaultStore.closeCurrentFile();
+        }
       } catch (e) {
         alert("重命名失败: " + e);
       }
@@ -122,7 +123,9 @@
         await invoke("delete_note", { path });
       }
       await vaultStore.refreshFileTree();
-      vaultStore.closeTab(path);
+      if ($vaultStore.currentFilePath === path || $vaultStore.currentFilePath?.startsWith(path + "/")) {
+        vaultStore.closeCurrentFile();
+      }
     } catch (e) {
       alert("删除失败: " + e);
     }

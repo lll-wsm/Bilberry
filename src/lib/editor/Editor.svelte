@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount, untrack, tick } from "svelte";
   import { EditorView, basicSetup } from "codemirror";
-  import { EditorState, Compartment } from "@codemirror/state";
+  import { EditorState, Compartment, Prec } from "@codemirror/state";
   import { openSearchPanel } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { createExtensions } from "./cm-extensions";
@@ -139,7 +139,10 @@ import { onMount, untrack, tick } from "svelte";
 
   function getThemeExt($theme: string): Extension {
     const baseTheme = $theme === "dark" ? oneDark : [];
-    const selectionTheme = EditorView.theme({
+    const selectionTheme = Prec.highest(EditorView.theme({
+      "&": {
+        backgroundColor: "var(--bg-primary) !important",
+      },
       "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
         backgroundColor: "var(--selection-bg) !important",
       },
@@ -156,13 +159,12 @@ import { onMount, untrack, tick } from "svelte";
         backgroundColor: "rgba(128, 128, 128, 0.1)",
       },
       ".cm-gutters": {
-        backgroundColor: "var(--bg-secondary) !important",
-        borderRight: "1px solid var(--border-divider)",
+        borderRight: "none",
       },
       ".cm-lineNumbers .cm-gutterElement": {
         color: "var(--text-muted) !important",
       },
-    });
+    }));
     return [baseTheme, selectionTheme];
   }
 
@@ -520,5 +522,22 @@ import { onMount, untrack, tick } from "svelte";
 
   .editor-container :global(.cm-editor.cm-focused) {
     outline: none;
+  }
+
+  .editor-container :global(.cm-gutters) {
+    width: 32px !important;
+    border: none !important;
+    background-color: transparent !important;
+  }
+
+  .editor-container :global(.cm-gutter) {
+    background-color: transparent !important;
+  }
+
+  .editor-container :global(.cm-lineNumbers .cm-gutterElement) {
+    padding: 0 8px 0 0 !important;
+    text-align: right !important;
+    color: var(--text-muted) !important;
+    font-size: 0.85em !important;
   }
 </style>

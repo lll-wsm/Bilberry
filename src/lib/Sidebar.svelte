@@ -196,7 +196,7 @@
     border-right: 1px solid var(--border-divider);
     display: flex;
     flex-direction: column;
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     position: relative;
     overflow: hidden;
   }

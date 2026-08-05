@@ -10,9 +10,9 @@ fn create_new_window(app: tauri::AppHandle) {
     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
     #[allow(unused_mut)]
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
-        .title("Bilberry")
-        .inner_size(1200.0, 800.0)
-        .min_inner_size(800.0, 600.0);
+        .title("")
+        .inner_size(720.0, 680.0)
+        .min_inner_size(500.0, 400.0);
     #[cfg(target_os = "macos")]
     {
         builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
@@ -40,6 +40,11 @@ fn notify_frontend_ready(app: tauri::AppHandle, state: State<'_, AppState>) {
         app.emit("file-opened", file).ok();
     }
     files.clear();
+}
+
+#[tauri::command]
+fn get_pending_files(state: State<'_, AppState>) -> Vec<String> {
+    state.pending_files.lock().unwrap().clone()
 }
 
 mod commands;
@@ -77,6 +82,10 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
 
     let open_vault = MenuItemBuilder::with_id("open_vault", "Open Vault...")
         .accelerator("CmdOrCtrl+O")
+        .build(app)?;
+
+    let open_file = MenuItemBuilder::with_id("open_file", "Open File...")
+        .accelerator("CmdOrCtrl+Shift+O")
         .build(app)?;
 
     let recent_entries = recent::load_recent();
@@ -148,6 +157,7 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .separator()
         .item(&create_vault)
         .item(&open_vault)
+        .item(&open_file)
         .item(&open_recent_menu)
         .separator()
         .item(&close_window)
@@ -170,8 +180,13 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&find)
         .build()?;
 
+    let toggle_sidebar = MenuItemBuilder::with_id("toggle_sidebar", "Toggle Sidebar")
+        .accelerator("CmdOrCtrl+\\")
+        .build(app)?;
+
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .item(&toggle_sidebar)
         .separator()
         .item(
             &MenuItemBuilder::with_id("zoom_in", "Zoom In")
@@ -242,9 +257,9 @@ fn open_in_new_window(app: tauri::AppHandle, vault_path: Option<String>, file_pa
     
     #[allow(unused_mut)]
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url_str.into()))
-        .title("Bilberry")
-        .inner_size(1200.0, 800.0)
-        .min_inner_size(800.0, 600.0);
+        .title("")
+        .inner_size(720.0, 680.0)
+        .min_inner_size(500.0, 400.0);
         
     #[cfg(target_os = "macos")]
     {
@@ -296,6 +311,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 {
                     let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
+                    let _ = window.set_title("");
                 }
 
                 #[cfg(not(target_os = "macos"))]
@@ -309,7 +325,7 @@ pub fn run() {
                 let args: Vec<String> = std::env::args().collect();
                 if args.len() > 1 {
                     let path = &args[1];
-                    if path.ends_with(".md") || path.ends_with(".markdown") {
+                    if !path.is_empty() {
                         let state = app.state::<AppState>();
                         state.pending_files.lock().unwrap().push(path.clone());
                     }
@@ -332,11 +348,14 @@ pub fn run() {
                 "open_vault" => {
                     app.emit("menu-open-vault", ()).ok();
                 }
+                "open_file" => {
+                    app.emit("menu-open-file", ()).ok();
+                }
                 "new_window" => {
                     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
                     #[allow(unused_mut)]
                     let mut builder = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
-                        .title("Bilberry")
+                        .title("")
                         .inner_size(1200.0, 800.0)
                         .min_inner_size(800.0, 600.0);
                     #[cfg(target_os = "macos")]
@@ -353,6 +372,9 @@ pub fn run() {
                 }
                 "actual_size" => {
                     app.emit("menu-zoom-reset", ()).ok();
+                }
+                "toggle_sidebar" => {
+                    app.emit("menu-toggle-sidebar", ()).ok();
                 }
                 "zoom" => {
                     if let Some(window) = app.get_webview_window("main") {
@@ -411,6 +433,7 @@ pub fn run() {
             commands::remove_from_recent,
             refresh_menu,
             notify_frontend_ready,
+            get_pending_files,
             create_new_window,
             open_in_new_window,
             clear_recent_list,

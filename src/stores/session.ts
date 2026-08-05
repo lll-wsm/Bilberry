@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface SessionData {
-  openTabs: string[];
   activeTab: string | null;
   scrollPositions: Record<string, { anchor: number; head: number }>;
 }

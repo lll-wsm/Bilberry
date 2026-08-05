@@ -685,8 +685,13 @@
   }
 
   .markdown-body {
-    max-width: 800px;
+    max-width: 100%;
     margin: 0 auto;
+  }
+
+  .preview :global(.markdown-body img) {
+    max-width: 100%;
+    height: auto;
   }
 
   /* Force paragraphs, list items, and blockquotes inside markdown-body to inherit the user's custom line-height and font-family. */
@@ -1008,33 +1013,6 @@
 
   .preview :global(.markdown-body tr:hover td) {
     background-color: var(--bg-hover) !important;
-  }
-
-  /* Markdown GFM Alert Styling */
-  :root {
-    --alert-note-border: #0969da;
-    --alert-note-bg: rgba(9, 105, 218, 0.07);
-    --alert-tip-border: #1a7f37;
-    --alert-tip-bg: rgba(26, 127, 55, 0.07);
-    --alert-important-border: #8250df;
-    --alert-important-bg: rgba(130, 80, 223, 0.07);
-    --alert-warning-border: #9a6700;
-    --alert-warning-bg: rgba(154, 103, 0, 0.07);
-    --alert-caution-border: #cf222e;
-    --alert-caution-bg: rgba(207, 34, 46, 0.07);
-  }
-
-  :global(.dark) {
-    --alert-note-border: #2f81f7;
-    --alert-note-bg: rgba(47, 129, 247, 0.12);
-    --alert-tip-border: #3fb950;
-    --alert-tip-bg: rgba(63, 185, 80, 0.12);
-    --alert-important-border: #a371f7;
-    --alert-important-bg: rgba(163, 113, 247, 0.12);
-    --alert-warning-border: #d29922;
-    --alert-warning-bg: rgba(210, 153, 34, 0.12);
-    --alert-caution-border: #f85149;
-    --alert-caution-bg: rgba(248, 81, 73, 0.12);
   }
 
   .preview :global(.markdown-alert) {

@@ -97,6 +97,7 @@
         { label: "New Window", action: { type: "invoke", payload: "create_new_window" } },
         { label: "Create Directory...", action: { type: "emit", payload: "menu-create-vault" } },
         { label: "Open Vault...", action: { type: "emit", payload: "menu-open-vault" } },
+        { label: "Open File...", action: { type: "emit", payload: "menu-open-file" } },
         {
           label: "Open Recent",
           submenu: buildRecentSubmenu(recentList),
@@ -121,6 +122,8 @@
     {
       label: "View",
       items: [
+        { label: "Toggle Sidebar", action: { type: "emit", payload: "menu-toggle-sidebar" } },
+        { separator: true },
         { label: "Zoom In", action: { type: "emit", payload: "menu-zoom-in" } },
         { label: "Zoom Out", action: { type: "emit", payload: "menu-zoom-out" } },
         { label: "Actual Size", action: { type: "emit", payload: "menu-zoom-reset" } },
@@ -312,8 +315,7 @@
     display: flex;
     align-items: center;
     height: 36px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-divider);
+    background: var(--header-bg);
     flex-shrink: 0;
     user-select: none;
     z-index: 9999;

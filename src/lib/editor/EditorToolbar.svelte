@@ -73,7 +73,7 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    background: var(--bg-secondary);
+    background: var(--header-bg);
     border: 1px solid var(--border-divider);
     border-right: none;
     border-radius: 8px 0 0 8px;
@@ -136,7 +136,7 @@
     height: 48px;
     border: 1px solid var(--border-divider);
     border-right: none;
-    background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+    background: color-mix(in srgb, var(--bg-primary) 80%, transparent);
     cursor: pointer;
     border-radius: 6px 0 0 6px;
     color: var(--text-muted);

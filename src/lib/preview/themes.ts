@@ -125,6 +125,8 @@ function parseGlobalColors(css: string): {
 
 function stripLayoutProps(declarations: string): string {
   return declarations
+    .replace(/background-color:\s*[^;]+;?/g, "")
+    .replace(/background:\s*[^;]+;?/g, "")
     .replace(/max-width:\s*[^;]+;?/g, "")
     .replace(/min-width:\s*[^;]+;?/g, "")
     .replace(/margin:\s*[^;]+;?/g, "")
@@ -337,14 +339,11 @@ export async function applyTheme(themeId: string | null) {
   const themeInfo = themes.find((t) => t.id === themeId);
 
   if (!themeId || themeId === "default" || !themeInfo) {
-    resetGlobalColors();
     activeThemeId = null;
     cacheTheme(null, false);
     return;
   }
 
-  // Set html class for dark/light mode CSS variables
-  document.documentElement.classList.toggle("dark", themeInfo.mode === "dark");
   activeThemeId = themeId;
   cacheTheme(themeId, themeInfo.mode === "dark");
 
@@ -357,10 +356,6 @@ export async function applyTheme(themeId: string | null) {
 
   const mod = await themeModules[path]();
   const rawCss = mod.default;
-
-  // Extract global colors from body{}/html{} to drive CSS variables
-  const colors = parseGlobalColors(rawCss);
-  applyGlobalColors(colors);
 
   // Inject scoped CSS (body/html kept global, other selectors scoped to .markdown-body)
   const style = document.createElement("style");

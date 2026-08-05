@@ -4,7 +4,9 @@
   import { vaultStore } from "../stores/vault";
   import { settingsStore } from "../stores/settings";
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
+  import { themeManager } from "./themes/theme-manager";
   import { applyTheme, initPreviewThemeSync } from "./preview/themes";
+  import { previewThemes } from "./themes/preview-themes";
   import { editorStore, triggerFindCount, triggerPreviewFindCount } from "../stores/editor";
 
   import Sidebar from "./Sidebar.svelte";
@@ -15,15 +17,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { X } from "lucide-svelte";
-  import TabBar from "./editor/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
   import Titlebar from "./ui/Titlebar.svelte";
   import MenuBar from "./ui/MenuBar.svelte";
 
   // Apply the cached preview theme immediately to prevent flash
+  themeManager.initSync();
   initPreviewThemeSync();
 
-  let sidebarOpen = $state(true);
+  let sidebarOpen = $state(false);
   let recentDirs = $state<string[]>([]);
   let showSettings = $state(false);
   let unlisteners: UnlistenFn[] = [];
@@ -31,8 +33,13 @@
   let isCtrlPressed = $state(false);
   let isMetaPressed = $state(false);
 
+  $effect(() => {
+    getCurrentWindow().setTitle("");
+  });
+
   onMount(() => {
     let disposed = false;
+    let hasOpenedFile = false;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") isCtrlPressed = true;
@@ -61,32 +68,31 @@
     const initialVault = params.get("vault");
     const initialFile = params.get("file");
 
-    loadHistory().then((h) => {
-      recentDirs = h;
-      
-      if (initialVault) {
-        vaultStore.openVault(initialVault).then(() => {
-          addToHistory(initialVault);
-          if (initialFile) {
-            vaultStore.openNote(initialFile);
+    // Wait a brief moment to let the event loop process OS file-open events on startup
+    setTimeout(() => {
+      if (disposed) return;
+      loadHistory().then(async (h) => {
+        recentDirs = h;
+        
+        if (initialVault) {
+          vaultStore.openVault(initialVault).then(() => {
+            addToHistory(initialVault);
+            if (initialFile) {
+              vaultStore.openNote(initialFile);
+              addToRecent(initialFile, "file");
+            }
+          }).catch((e) => {
+            console.error("Failed to open initial vault from query param:", initialVault, e);
+          });
+        } else if (initialFile) {
+          vaultStore.openSingleFile(initialFile).then(() => {
             addToRecent(initialFile, "file");
-          }
-        }).catch((e) => {
-          console.error("Failed to open initial vault from query param:", initialVault, e);
-        });
-      } else if (initialFile) {
-        const parentDir = initialFile.substring(0, initialFile.lastIndexOf("/"));
-        vaultStore.openVault(parentDir).then(() => {
-          vaultStore.openNote(initialFile);
-          addToRecent(initialFile, "file");
-        }).catch((e) => {
-          console.error("Failed to open parent vault of file:", initialFile, e);
-        });
-      } else if (h.length > 0) {
-        // Auto-open last closed directory on startup if no query parameter is present
-        handleOpenRecent(h[0]);
-      }
-    });
+          }).catch((e) => {
+            console.error("Failed to open file in single file mode:", initialFile, e);
+          });
+        }
+      });
+    }, 150);
 
     const registerListeners = async () => {
       const listeners = await Promise.all([
@@ -101,6 +107,9 @@
         }),
         listen("menu-open-vault", () => {
           handleOpenVault(isCtrlPressed || isMetaPressed);
+        }),
+        listen("menu-open-file", () => {
+          handleOpenFile();
         }),
         listen<{ path: string; kind: string }>("menu-open-recent", (event) => {
           const { path, kind } = event.payload;
@@ -117,7 +126,12 @@
           getCurrentWindow().close();
         }),
         listen<string>("file-opened", (event) => {
-          handleOpenRecentFile(event.payload);
+          hasOpenedFile = true;
+          vaultStore.openSingleFile(event.payload).then(() => {
+            addToRecent(event.payload, "file");
+          }).catch((e) => {
+            alert("无法打开文件: " + e);
+          });
         }),
         listen("menu-zoom-in", () => {
           settingsStore.updateSetting("fontSize", Math.min($settingsStore.fontSize + 1, 40));
@@ -127,6 +141,9 @@
         }),
         listen("menu-zoom-reset", () => {
           settingsStore.updateSetting("fontSize", 16);
+        }),
+        listen("menu-toggle-sidebar", () => {
+          sidebarOpen = !sidebarOpen;
         }),
       ]);
 
@@ -149,6 +166,24 @@
           getCurrentWindow().destroy();
         }
       }).then((unlisten) => unlisteners.push(unlisten));
+
+      // Drag-and-drop file opening (Tauri 2 window-level API)
+      const unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
+        if (event.payload.type === "drop") {
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) {
+            vaultStore.openFiles(paths).then(() => {
+              for (const p of paths) {
+                addToRecent(p, "file");
+              }
+            }).catch((e) => {
+              console.error("Failed to open dropped files:", e);
+            });
+          }
+        }
+      });
+      unlisteners.push(unlistenDragDrop);
+
       await invoke("notify_frontend_ready");
     };
 
@@ -173,13 +208,12 @@
         alert("打开新窗口失败: " + e);
       }
     } else {
-      // Open the parent directory as vault, then open the file
-      const parentDir = path.substring(0, path.lastIndexOf("/"));
       try {
-        if ($vaultStore.vault?.path !== parentDir) {
-          await vaultStore.openVault(parentDir);
+        if ($vaultStore.vault && !$vaultStore.isSingleFile && (path.startsWith($vaultStore.vault.path + "/") || path.startsWith($vaultStore.vault.path + "\\"))) {
+          await vaultStore.openNote(path);
+        } else {
+          await vaultStore.openSingleFile(path);
         }
-        await vaultStore.openNote(path);
         addToRecent(path, "file");
       } catch {
         alert("无法打开文件: " + path);
@@ -200,11 +234,24 @@
   });
 
   $effect(() => {
-    let tid = $settingsStore.previewTheme;
-    if (tid === "system") {
-      tid = systemIsDark ? "one-dark" : "github-light";
+    let previewThemeId = $settingsStore.previewTheme;
+    let uiThemeId: "light" | "dark";
+
+    if (previewThemeId === "system") {
+      if (systemIsDark) {
+        previewThemeId = "one-dark";
+        uiThemeId = "dark";
+      } else {
+        previewThemeId = "github-light";
+        uiThemeId = "light";
+      }
+    } else {
+      const previewTheme = previewThemes.find(t => t.id === previewThemeId);
+      uiThemeId = previewTheme?.mode === "dark" ? "dark" : "light";
     }
-    applyTheme(tid);
+
+    themeManager.apply(uiThemeId, previewThemeId);
+    applyTheme(previewThemeId);
   });
 
   async function handleOpenVault(newWindow = false) {
@@ -254,6 +301,31 @@
     }
   }
 
+  async function handleOpenFile() {
+    const selected = await open({
+      multiple: true,
+      title: "选择文件",
+      filters: [
+        {
+          name: "Supported",
+          extensions: [
+            "md", "markdown", "mmd", "mermaid",
+            "txt", "json", "log", "csv",
+            "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif", "ico",
+          ],
+        },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (selected) {
+      const paths = Array.isArray(selected) ? selected : [selected];
+      await vaultStore.openFiles(paths);
+      for (const p of paths) {
+        await addToRecent(p, "file");
+      }
+    }
+  }
+
   async function handleOpenRecent(path: string, newWindow = false) {
     if (newWindow) {
       try {
@@ -295,11 +367,10 @@
   <Titlebar />
   <MenuBar />
   <div class="layout">
-    {#if sidebarOpen}
+    {#if sidebarOpen && $vaultStore.vault}
       <Sidebar />
     {/if}
     <main class="main-content">
-      <TabBar {sidebarOpen} onToggleSidebar={() => sidebarOpen = !sidebarOpen} />
       {#if $vaultStore.vault}
         {#if $vaultStore.currentFilePath}
           <EditorPanel
@@ -312,13 +383,11 @@
           </div>
         {/if}
       {:else}
-        <div class="empty-state">
-          <p>未打开目录。请通过“文件”菜单新建或打开目录。</p>
-        </div>
+        <div class="empty-state"></div>
       {/if}
     </main>
   </div>
-  <StatusBar onOpenSettings={() => showSettings = true} />
+  <StatusBar />
   <SettingsModal show={showSettings} onclose={() => showSettings = false} />
   <ContextMenu />
 </div>
@@ -346,9 +415,5 @@
 
   .empty-state {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
   }
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { settingsStore } from "../../stores/settings";
-  import { themes, applyTheme } from "../preview/themes";
+  import { themes } from "../preview/themes";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
 
@@ -66,7 +66,6 @@
         <select id="previewTheme" value={previewTheme} onchange={handleThemeChange}>
           <option value="system">自动 (跟随系统)</option>
           <optgroup label="浅色主题">
-            <option value="default">Default (System Light)</option>
             {#each themes.filter(t => t.mode === "light" && t.id !== "default") as t}
               <option value={t.id}>{t.label}</option>
             {/each}

@@ -1,61 +1,8 @@
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f3f4f6;
-  --bg-hover: #e5e7eb;
-  --bg-active: #d1d5db;
-  --selection-bg: rgba(37, 99, 235, 0.5);
-  --text-normal: #1f2937;
-  --text-muted: #6b7280;
-  --border-divider: #d1d5db;
-  --interactive-accent: #2563eb;
-  
   --spacing-1: 4px;
   --spacing-2: 8px;
   --spacing-3: 12px;
   --spacing-4: 16px;
-
-  /* Header specific */
-  --header-bg: var(--bg-secondary);
-  --header-text: var(--text-normal);
-
-  /* Syntax Highlighting Light */
-  --code-keyword: #d73a49;
-  --code-string: #032f62;
-  --code-number: #005cc5;
-  --code-comment: #6a737d;
-  --code-function: #6f42c1;
-  --code-title: #6f42c1;
-  --code-builtin: #e36209;
-  --code-variable: #24292e;
-  --code-attr: #005cc5;
-  --code-tag: #22863a;
-}
-
-.dark {
-  --bg-primary: #1e1e1e;
-  --bg-secondary: #252526;
-  --bg-hover: #2d2d30;
-  --bg-active: #37373d;
-  --selection-bg: rgba(0, 122, 204, 0.7);
-  --text-normal: #cccccc;
-  --text-muted: #858585;
-  --border-divider: #3c3c3c;
-  --interactive-accent: #007acc;
-
-  --header-bg: var(--bg-secondary);
-  --header-text: var(--text-normal);
-
-  /* Syntax Highlighting Dark */
-  --code-keyword: #c678dd;
-  --code-string: #98c379;
-  --code-number: #d19a66;
-  --code-comment: #5c6370;
-  --code-function: #61afef;
-  --code-title: #61afef;
-  --code-builtin: #e5c07b;
-  --code-variable: #abb2bf;
-  --code-attr: #d19a66;
-  --code-tag: #e06c75;
 }
 
 body {
@@ -66,11 +13,18 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
-/* Native-feel scroll bounce */
-.main-content, .sidebar, .workspace, .editor-container, .preview-container {
-  overscroll-behavior-y: bounce;
+html {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Prevent scroll chaining to parent elements */
+.main-content, .sidebar, .workspace, .editor-container, .preview-container, .preview {
+  overscroll-behavior: none;
 }
 
 /* Custom Drag Region for Overlay Titlebar */

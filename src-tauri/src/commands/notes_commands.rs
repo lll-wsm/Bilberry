@@ -24,12 +24,21 @@ pub fn write_note(path: String, content: String, encoding: Option<String>) -> Re
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
-    
+
     let enc_name = encoding.unwrap_or_else(|| "utf-8".to_string());
     let enc = Encoding::for_label(enc_name.as_bytes()).unwrap_or(encoding_rs::UTF_8);
     let (bytes, _, _) = enc.encode(&content);
-    
-    fs::write(&path, &*bytes).map_err(|e| format!("Failed to write file: {}", e))
+
+    // Atomic write: write to a temp file in the same directory, then rename.
+    // This prevents a crash mid-write from leaving the file truncated/empty.
+    let tmp_path = format!("{}.bilberry_tmp", path);
+    fs::write(&tmp_path, &*bytes)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    fs::rename(&tmp_path, &path).map_err(|e| {
+        // Clean up the orphaned temp file if rename fails
+        let _ = fs::remove_file(&tmp_path);
+        format!("Failed to rename temp file: {}", e)
+    })
 }
 
 #[tauri::command]
