@@ -145,6 +145,9 @@ const zh: Messages = {
     imageLoadFailed: "(加载失败)",
     rendering: "渲染中...",
   },
+  frontmatter: {
+    properties: "属性",
+  },
   image: {
     loadFailed: `无法加载图片: {error}`,
     loading: "正在加载图片...",
@@ -167,6 +170,10 @@ const zh: Messages = {
     languageSystem: "跟随系统",
     languageChinese: "中文",
     languageEnglish: "English",
+    frontmatter: "Front Matter",
+    frontmatterProperties: "属性面板",
+    frontmatterHidden: "隐藏",
+    frontmatterCode: "代码块",
   },
   export: {
     title: "导出",

@@ -146,6 +146,9 @@ const en = {
     imageLoadFailed: "(failed to load)",
     rendering: "Rendering…",
   },
+  frontmatter: {
+    properties: "Properties",
+  },
   image: {
     loadFailed: `Failed to load image: {error}`,
     loading: "Loading image…",
@@ -168,6 +171,10 @@ const en = {
     languageSystem: "System (follow OS)",
     languageChinese: "中文",
     languageEnglish: "English",
+    frontmatter: "Front matter",
+    frontmatterProperties: "Properties panel",
+    frontmatterHidden: "Hide",
+    frontmatterCode: "Code block",
   },
   export: {
     title: "Export",

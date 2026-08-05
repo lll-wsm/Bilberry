@@ -3,6 +3,7 @@
   import { previewThemes } from "../themes/preview-themes";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
+  import { t } from "../i18n/i18n.svelte";
 
   let { content = "", x = 0, y = 0, visible = false, placement = "bottom" }: {
     content?: string;
@@ -12,7 +13,13 @@
     placement?: "top" | "bottom";
   } = $props();
 
-  let renderedHtml = $derived(renderMarkdown(content).html);
+  let renderedHtml = $derived(
+    renderMarkdown(
+      content,
+      { properties: t("frontmatter.properties") },
+      $settingsStore.frontmatter,
+    ).html,
+  );
 
   // Post-process HTML to wrap sections in <details> for folding
   function processFolding(html: string): string {
@@ -168,7 +175,7 @@
     background: var(--bg-hover);
   }
 
-  :global(details > *:not(summary)) {
+  :global(details:not(.frontmatter-properties) > *:not(summary)) {
     padding-left: 16px;
     margin-left: 6px;
     border-left: 2px solid var(--border-divider);

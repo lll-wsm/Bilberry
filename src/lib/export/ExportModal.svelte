@@ -2,6 +2,8 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import { vaultStore } from "../../stores/vault";
+  import { settingsStore } from "../../stores/settings";
+  import { splitFrontmatter } from "../preview/markdown";
   import { t } from "../i18n/i18n.svelte";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
@@ -18,9 +20,17 @@
         ?.split("/")
         .pop()
         ?.replace(/\.md$/, "") ?? "Untitled";
+      // Strip / render the YAML front matter the same way the preview does,
+      // so the exported HTML never leaks the raw `---` block into the body.
+      const { body, panelHtml } = splitFrontmatter(
+        $vaultStore.currentContent,
+        $settingsStore.frontmatter,
+        { properties: t("frontmatter.properties") },
+      );
       const html = await invoke<string>("export_html", {
-        content: $vaultStore.currentContent,
+        content: body,
         title,
+        frontmatterHtml: panelHtml || null,
       });
       await invoke("write_note", { path, content: html });
       onclose?.();

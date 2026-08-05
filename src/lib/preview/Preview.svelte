@@ -286,11 +286,15 @@
   $effect(() => {
     const src = source;
     const mdMode = mode;
+    const frontmatterMode = $settingsStore.frontmatter;
+    const frontmatterLabels = { properties: t("frontmatter.properties") };
     if (renderTimer) clearTimeout(renderTimer);
     renderTimer = setTimeout(() => {
       firstRenderPending = false;
       try {
-        result = mdMode === "mermaid" ? renderMermaidDocument(src) : renderMarkdown(src);
+        result = mdMode === "mermaid"
+          ? renderMermaidDocument(src)
+          : renderMarkdown(src, frontmatterLabels, frontmatterMode);
         renderError = null;
       } catch (e: any) {
         console.error("Markdown render error:", e);
@@ -1311,5 +1315,108 @@
   :global(.dark) :global(.preview-find-match-current) {
     background-color: rgba(255, 152, 0, 0.55) !important;
     color: inherit;
+  }
+
+  /* YAML front matter properties panel (Obsidian-style) */
+  .preview :global(.frontmatter-properties) {
+    margin: 0 0 1.25em 0;
+    border: 1px solid var(--border-divider);
+    border-radius: 8px;
+    background: var(--bg-hover);
+    overflow: hidden;
+  }
+
+  .preview :global(.frontmatter-properties summary) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+
+  .preview :global(.frontmatter-properties summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  .preview :global(.frontmatter-properties summary::before) {
+    content: "▸";
+    display: inline-block;
+    font-size: 0.75em;
+    transition: transform 0.15s ease;
+  }
+
+  .preview :global(.frontmatter-properties[open] summary::before) {
+    transform: rotate(90deg);
+  }
+
+  .preview :global(.frontmatter-properties .property-count) {
+    font-size: 0.8em;
+    font-weight: 400;
+    opacity: 0.7;
+  }
+
+  .preview :global(.frontmatter-properties .property-grid) {
+    border-top: 1px solid var(--border-divider);
+  }
+
+  .preview :global(.frontmatter-properties .property-row) {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+    padding: 6px 12px;
+    font-size: 0.92em;
+    border-bottom: 1px solid var(--border-divider);
+  }
+
+  .preview :global(.frontmatter-properties .property-row:last-child) {
+    border-bottom: none;
+  }
+
+  .preview :global(.frontmatter-properties .property-key) {
+    color: var(--text-muted);
+    word-break: break-word;
+  }
+
+  .preview :global(.frontmatter-properties .property-value) {
+    color: var(--text-color);
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  .preview :global(.frontmatter-properties .property-chip) {
+    margin: 0 4px 2px 0;
+  }
+
+  .preview :global(.frontmatter-properties .property-null) {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .preview :global(.frontmatter-properties .frontmatter-complex) {
+    font-family: var(--font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+    font-size: 0.85em;
+    background: rgba(128, 128, 128, 0.06);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .preview :global(.frontmatter-properties .frontmatter-raw pre) {
+    margin: 0;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-divider);
+    border-radius: 0;
+    overflow-x: auto;
+  }
+
+  .preview :global(.frontmatter-properties .frontmatter-raw code) {
+    background: transparent;
+    padding: 0;
   }
 </style>

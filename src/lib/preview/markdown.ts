@@ -1,6 +1,7 @@
 import { marked } from "marked";
 import katex from "katex";
 import hljs from "highlight.js";
+import { load as yamlLoad, dump as yamlDump } from "js-yaml";
 
 // Configure marked
 marked.setOptions({
@@ -102,7 +103,7 @@ interface PreprocessResult {
 }
 
 export interface MarkdownBlock {
-  type: "heading" | "paragraph" | "list" | "blockquote" | "code" | "mermaid" | "image" | "table" | "other";
+  type: "heading" | "paragraph" | "list" | "blockquote" | "code" | "mermaid" | "image" | "table" | "other" | "frontmatter";
   source: string;
   startLine: number;
   endLine: number;
@@ -159,6 +160,14 @@ export function splitMarkdownBlocks(src: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let i = 0;
 
+  // A leading YAML front matter block (if present) is reported as a single
+  // "frontmatter" block so editor ↔ preview scroll sync stays aligned after
+  // the preview strips it from the body.
+  const frontmatterMatch = normalized.match(FRONTMATTER_RE);
+  const frontmatterEndLine = frontmatterMatch
+    ? frontmatterMatch[0].split("\n").length - (frontmatterMatch[0].endsWith("\n") ? 1 : 0) - 1
+    : null;
+
   function pushBlock(type: MarkdownBlock["type"], start: number, end: number) {
     const startOffset = lineOffsets[start];
     const endOffset = end + 1 < lineOffsets.length ? lineOffsets[end + 1] - 1 : normalized.length;
@@ -173,6 +182,12 @@ export function splitMarkdownBlocks(src: string): MarkdownBlock[] {
   }
 
   while (i < lines.length) {
+    if (frontmatterEndLine !== null && i <= frontmatterEndLine) {
+      pushBlock("frontmatter", i, frontmatterEndLine);
+      i = frontmatterEndLine + 1;
+      continue;
+    }
+
     if (!lines[i].trim()) {
       i++;
       continue;
@@ -508,8 +523,163 @@ export async function renderMermaidBlocks(
   return svgs;
 }
 
-export function renderMarkdown(src: string): RenderResult {
-  const { html: preprocessed, mermaidBlocks, blockMaths } = preprocessMarkdown(src);
+// ---------- YAML front matter ----------
+
+export interface FrontmatterLabels {
+  /** Heading of the collapsible properties panel. */
+  properties: string;
+}
+
+/** Default (English) front matter labels — used outside the UI (e.g. tests). */
+export const DEFAULT_FRONTMATTER_LABELS: FrontmatterLabels = {
+  properties: "Properties",
+};
+
+/** How YAML front matter is presented in the rendered output. */
+export type FrontmatterMode = "hidden" | "properties" | "code";
+
+export interface FrontmatterSplit {
+  /** Source with the front matter block removed. */
+  body: string;
+  /** Rendered `<details>` panel (properties or raw code), or "" when hidden/absent. */
+  panelHtml: string;
+}
+
+/**
+ * A YAML front matter block is only recognized when it is the very first thing
+ * in the file (after an optional BOM): an opening `---` fence, content, and a
+ * closing `---` fence on its own line. A `---` anywhere else in the document is
+ * a thematic break (hr) and is never touched.
+ */
+const FRONTMATTER_RE = /^[\uFEFF]?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+function extractFrontmatter(
+  src: string,
+  labels: FrontmatterLabels,
+  mode: FrontmatterMode,
+): FrontmatterSplit {
+  const match = FRONTMATTER_RE.exec(src);
+  if (!match) return { body: src, panelHtml: "" };
+
+  const raw = match[1];
+  const body = src.slice(match[0].length);
+  if (!raw.trim()) return { body, panelHtml: "" };
+
+  let panelHtml = "";
+  if (mode === "properties") {
+    panelHtml = renderFrontmatterPanel(raw, labels);
+  } else if (mode === "code") {
+    panelHtml = renderFrontmatterCodeBlock(raw, labels);
+  }
+  return { body, panelHtml };
+}
+
+/**
+ * Split a markdown source into its body and the rendered front matter panel.
+ * Shared by the preview and the HTML export so both surfaces stay consistent.
+ */
+export function splitFrontmatter(
+  src: string,
+  mode: FrontmatterMode = "properties",
+  labels: FrontmatterLabels = DEFAULT_FRONTMATTER_LABELS,
+): FrontmatterSplit {
+  return extractFrontmatter(src, labels, mode);
+}
+
+/** A collapsible panel showing the raw YAML as a syntax-highlighted code block. */
+function renderFrontmatterCodeBlock(raw: string, labels: FrontmatterLabels): string {
+  return `<details class="frontmatter-properties" open><summary>${escapeHtml(labels.properties)}</summary><div class="frontmatter-raw"><pre><code class="language-yaml hljs">${highlightYaml(raw)}</code></pre></div></details>`;
+}
+
+function renderFrontmatterPanel(raw: string, labels: FrontmatterLabels): string {
+  let data: unknown;
+  try {
+    data = yamlLoad(raw);
+  } catch {
+    data = null;
+  }
+
+  const rows = frontmatterRows(data);
+  if (rows === null) {
+    // Unparseable YAML, or the document is not a mapping: keep the raw block
+    // visible as a syntax-highlighted YAML code block instead of dropping it.
+    return renderFrontmatterCodeBlock(raw, labels);
+  }
+  if (rows.length === 0) return ""; // empty mapping — nothing worth showing
+
+  const rowsHtml = rows
+    .map(
+      ([key, valueHtml]) =>
+        `<div class="property-row"><span class="property-key">${escapeHtml(key)}</span><span class="property-value">${valueHtml}</span></div>`,
+    )
+    .join("");
+
+  return `<details class="frontmatter-properties" open><summary>${escapeHtml(labels.properties)}<span class="property-count">${rows.length}</span></summary><div class="property-grid">${rowsHtml}</div></details>`;
+}
+
+/**
+ * Turn parsed YAML into [key, valueHtml] rows. Returns null when the YAML
+ * cannot be rendered as a property list (parse error, or the document is not a
+ * mapping); the caller then falls back to showing the raw block.
+ */
+function frontmatterRows(data: unknown): [string, string][] | null {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
+  const entries = Object.entries(data as Record<string, unknown>);
+  return entries.map(([key, value]) => [key, renderFrontmatterValue(value, key)]);
+}
+
+function renderFrontmatterValue(value: unknown, key?: string): string {
+  if (value === null || value === undefined) return `<span class="property-null">—</span>`;
+
+  if (typeof value === "string") {
+    // A single `tags: foo` is treated as one tag chip, like Obsidian.
+    if (key?.toLowerCase() === "tags" && value.trim()) {
+      const text = escapeHtml(value.trim());
+      return `<a class="hashtag property-chip" href="javascript:void(0)" data-tag="${text}">#${text}</a>`;
+    }
+    return escapeHtml(value);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") return escapeHtml(String(value));
+  if (value instanceof Date) return escapeHtml(value.toISOString());
+
+  if (Array.isArray(value)) {
+    // Arrays of plain scalars render as clickable chips (like Obsidian).
+    if (value.length > 0 && value.every((v) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
+      return value
+        .map((v) => {
+          const text = escapeHtml(String(v));
+          return `<a class="hashtag property-chip" href="javascript:void(0)" data-tag="${text}">#${text}</a>`;
+        })
+        .join(" ");
+    }
+    if (value.length === 0) return `<span class="property-null">—</span>`;
+  }
+
+  // Nested objects / arrays of objects: re-serialize as YAML in a code block.
+  try {
+    return `<code class="frontmatter-complex">${escapeHtml(yamlDump(value).trimEnd())}</code>`;
+  } catch {
+    return `<code class="frontmatter-complex">${escapeHtml(JSON.stringify(value))}</code>`;
+  }
+}
+
+function highlightYaml(raw: string): string {
+  try {
+    return hljs.highlight(raw, { language: "yaml" }).value;
+  } catch {
+    return escapeHtml(raw);
+  }
+}
+
+export function renderMarkdown(
+  src: string,
+  labels: FrontmatterLabels = DEFAULT_FRONTMATTER_LABELS,
+  mode: FrontmatterMode = "properties",
+): RenderResult {
+  const { body, panelHtml } = extractFrontmatter(src, labels, mode);
+
+  const { html: preprocessed, mermaidBlocks, blockMaths } = preprocessMarkdown(body);
 
   // Parse markdown
   const rawHtml = marked.parse(preprocessed) as string;
@@ -554,8 +724,10 @@ export function renderMarkdown(src: string): RenderResult {
   // Restore escaped dollar signs
   const restoredHtml = finalHtml.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), () => "$");
 
+  // The properties panel is prepended after all transforms so front matter
+  // values can never be misinterpreted as math, wiki-links, or hashtags.
   return {
-    html: restoredHtml,
+    html: panelHtml + restoredHtml,
     mermaidBlocks,
   };
 }

@@ -6,6 +6,9 @@ const FILE_NAME = "settings.json";
 
 export type Language = "system" | "zh" | "en";
 
+/** How YAML front matter is shown in the preview (and HTML export). */
+export type FrontmatterDisplay = "hidden" | "properties" | "code";
+
 export interface Settings {
   fontSize: number;
   fontFamily: string;
@@ -17,6 +20,7 @@ export interface Settings {
   theme: "light" | "dark" | "system";
   showHiddenFiles: boolean;
   language: Language;
+  frontmatter: FrontmatterDisplay;
 }
 
 const defaultSettings: Settings = {
@@ -30,6 +34,7 @@ const defaultSettings: Settings = {
   theme: "system",
   showHiddenFiles: true,
   language: "system",
+  frontmatter: "properties",
 };
 
 function createSettingsStore() {

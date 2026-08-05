@@ -12,6 +12,7 @@
   let previewTheme = $state($settingsStore.previewTheme);
   let showHiddenFiles = $state($settingsStore.showHiddenFiles);
   let language = $state($settingsStore.language);
+  let frontmatter = $state($settingsStore.frontmatter);
 
   $effect(() => {
     if (show) {
@@ -22,6 +23,7 @@
       previewTheme = $settingsStore.previewTheme;
       showHiddenFiles = $settingsStore.showHiddenFiles;
       language = $settingsStore.language;
+      frontmatter = $settingsStore.frontmatter;
     }
   });
 
@@ -32,6 +34,7 @@
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
     settingsStore.updateSetting("showHiddenFiles", showHiddenFiles);
     settingsStore.updateSetting("language", language);
+    settingsStore.updateSetting("frontmatter", frontmatter);
     
     // Logic: if previewTheme is 'system', app base theme is also 'system'.
     // Otherwise, app base theme matches the preview theme's mode.
@@ -88,6 +91,15 @@
           <option value="system">{t("settings.languageSystem")}</option>
           <option value="zh">{t("settings.languageChinese")}</option>
           <option value="en">{t("settings.languageEnglish")}</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="frontmatter">{t("settings.frontmatter")}</label>
+        <select id="frontmatter" bind:value={frontmatter}>
+          <option value="properties">{t("settings.frontmatterProperties")}</option>
+          <option value="hidden">{t("settings.frontmatterHidden")}</option>
+          <option value="code">{t("settings.frontmatterCode")}</option>
         </select>
       </div>
 
