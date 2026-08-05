@@ -13,12 +13,14 @@ pub fn open_vault(
     let vault = Vault::open(&path)?;
 
     let label = window.label().to_string();
-    {
+    // Retire the previous watcher for this window. Take it out under the lock
+    // but drop it *after* releasing the lock, so teardown never blocks other
+    // windows or poisons the mutex. (FileWatcher::drop is panic-safe anyway.)
+    let old_watcher = {
         let mut watchers = watcher_state.watchers.lock().unwrap();
-        if let Some(old_watcher) = watchers.remove(&label) {
-            drop(old_watcher);
-        }
-    }
+        watchers.remove(&label)
+    };
+    drop(old_watcher);
 
     let app_handle = window.app_handle().clone();
     let window_label = window.label().to_string();

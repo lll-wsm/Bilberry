@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, save, ask } from "@tauri-apps/plugin-dialog";
   import { vaultStore } from "../stores/vault";
   import { settingsStore } from "../stores/settings";
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
   import { themeManager } from "./themes/theme-manager";
-  import { applyTheme, initPreviewThemeSync } from "./preview/themes";
   import { previewThemes } from "./themes/preview-themes";
   import { editorStore, triggerFindCount, triggerPreviewFindCount } from "../stores/editor";
 
@@ -24,7 +23,6 @@
 
   // Apply the cached preview theme immediately to prevent flash
   themeManager.initSync();
-  initPreviewThemeSync();
 
   let sidebarOpen = $state(false);
   let recentDirs = $state<string[]>([]);
@@ -73,13 +71,14 @@
     const params = new URLSearchParams(window.location.search);
     const initialVault = params.get("vault");
     const initialFile = params.get("file");
+    const isUntitled = params.get("untitled") === "1";
 
     // Wait a brief moment to let the event loop process OS file-open events on startup
     setTimeout(() => {
       if (disposed) return;
       loadHistory().then(async (h) => {
         recentDirs = h;
-        
+
         if (initialVault) {
           vaultStore.openVault(initialVault).then(() => {
             addToHistory(initialVault);
@@ -96,6 +95,8 @@
           }).catch((e) => {
             console.error("Failed to open file in single file mode:", initialFile, e);
           });
+        } else if (isUntitled) {
+          vaultStore.newUntitled();
         }
       });
     }, 150);
@@ -151,6 +152,18 @@
         listen("menu-toggle-sidebar", () => {
           sidebarOpen = !sidebarOpen;
         }),
+        listen<string>("menu-set-theme", (event) => {
+          settingsStore.setThemeMode(event.payload as "light" | "dark" | "system");
+        }),
+        listen<string>("menu-set-preview-theme", (event) => {
+          settingsStore.setPreviewTheme(event.payload);
+        }),
+        listen("menu-save", () => {
+          handleSave();
+        }),
+        listen("menu-save-as", () => {
+          handleSaveAs();
+        }),
       ]);
 
       if (disposed) {
@@ -164,6 +177,15 @@
       getCurrentWindow().onCloseRequested(async (event) => {
         event.preventDefault();
         try {
+          // Prompt to save untitled documents that have content before closing.
+          if ($vaultStore.isUntitled && $vaultStore.currentContent.trim()) {
+            const shouldSave = await ask(t("dialog.saveBeforeClose"), { kind: "warning" });
+            if (shouldSave) {
+              await handleSaveAs();
+              // If the user cancelled the save dialog, don't close.
+              if ($vaultStore.isUntitled) return;
+            }
+          }
           await vaultStore.ensureSaved();
           vaultStore.closeVault();
         } catch (err) {
@@ -245,19 +267,29 @@
 
     if (previewThemeId === "system") {
       if (systemIsDark) {
-        previewThemeId = "one-dark";
+        previewThemeId = "cobalt";
         uiThemeId = "dark";
       } else {
-        previewThemeId = "github-light";
+        previewThemeId = "default";
         uiThemeId = "light";
       }
     } else {
       const previewTheme = previewThemes.find(t => t.id === previewThemeId);
-      uiThemeId = previewTheme?.mode === "dark" ? "dark" : "light";
+      if (!previewTheme) {
+        // Saved theme was deleted or not found — fall back to a valid one.
+        previewThemeId = systemIsDark ? "cobalt" : "default";
+        uiThemeId = systemIsDark ? "dark" : "light";
+      } else {
+        uiThemeId = previewTheme.mode === "dark" ? "dark" : "light";
+      }
     }
 
     themeManager.apply(uiThemeId, previewThemeId);
-    applyTheme(previewThemeId);
+
+    // Keep the native menu's theme checkmark in sync with the stored setting
+    // (no-op outside macOS, where the native menu is not used).
+    invoke("set_theme", { theme: $settingsStore.theme }).catch(() => {});
+    invoke("set_preview_theme", { theme: $settingsStore.previewTheme }).catch(() => {});
   });
 
   async function handleOpenVault(newWindow = false) {
@@ -367,6 +399,24 @@
   function onContentChange(text: string) {
     vaultStore.updateContent($vaultStore.currentFilePath, text);
   }
+
+  async function handleSave() {
+    if ($vaultStore.isUntitled) {
+      await handleSaveAs();
+    } else if ($vaultStore.currentFilePath) {
+      await vaultStore.saveCurrent();
+    }
+  }
+
+  async function handleSaveAs() {
+    const filePath = await save({
+      defaultPath: $vaultStore.vault?.path ?? undefined,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (filePath) {
+      await vaultStore.saveAsFile(filePath);
+    }
+  }
 </script>
 
 <div class="app-root">
@@ -380,17 +430,15 @@
       />
     {/if}
     <main class="main-content">
-      {#if $vaultStore.vault}
-        {#if $vaultStore.currentFilePath}
-          <EditorPanel
-            content={$vaultStore.currentContent}
-            {onContentChange}
-          />
-        {:else}
-          <div class="empty-state">
-            <p>{t("empty.selectNoteToEdit")}</p>
-          </div>
-        {/if}
+      {#if $vaultStore.currentFilePath || $vaultStore.isUntitled}
+        <EditorPanel
+          content={$vaultStore.currentContent}
+          {onContentChange}
+        />
+      {:else if $vaultStore.vault}
+        <div class="empty-state">
+          <p>{t("empty.selectNoteToEdit")}</p>
+        </div>
       {:else}
         <div class="empty-state"></div>
       {/if}

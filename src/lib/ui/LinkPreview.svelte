@@ -1,6 +1,6 @@
 <script lang="ts">
   import { renderMarkdown } from "../preview/markdown";
-  import { themes } from "../preview/themes";
+  import { previewThemes } from "../themes/preview-themes";
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
 
@@ -56,7 +56,7 @@
   let foldedHtml = $derived(processFolding(renderedHtml));
 
   const previewThemeId = $derived($settingsStore.previewTheme);
-  const isDark = $derived(themes.find(t => t.id === previewThemeId)?.mode === "dark" || $theme === "dark");
+  const isDark = $derived(previewThemes.find(t => t.id === previewThemeId)?.mode === "dark" || $theme === "dark");
 
   let style = $derived(
     placement === "top"

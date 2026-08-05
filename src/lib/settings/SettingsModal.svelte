@@ -1,6 +1,6 @@
 <script lang="ts">
   import { settingsStore } from "../../stores/settings";
-  import { themes } from "../preview/themes";
+  import { previewThemes } from "../themes/preview-themes";
   import { t } from "../i18n/i18n.svelte";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
@@ -39,7 +39,7 @@
       settingsStore.updateSetting("theme", "system");
       settingsStore.updateSetting("previewTheme", "system");
     } else {
-      const selected = themes.find(t => t.id === previewTheme);
+      const selected = previewThemes.find(t => t.id === previewTheme);
       if (selected) {
         settingsStore.updateSetting("theme", selected.mode);
         settingsStore.updateSetting("previewTheme", previewTheme);
@@ -70,12 +70,12 @@
         <select id="previewTheme" value={previewTheme} onchange={handleThemeChange}>
           <option value="system">{t("settings.followSystem")}</option>
           <optgroup label={t("settings.lightThemes")}>
-            {#each themes.filter(t => t.mode === "light" && t.id !== "default") as theme}
+            {#each previewThemes.filter(t => t.mode === "light" && t.id !== "default") as theme}
               <option value={theme.id}>{theme.label}</option>
             {/each}
           </optgroup>
           <optgroup label={t("settings.darkThemes")}>
-            {#each themes.filter(t => t.mode === "dark") as theme}
+            {#each previewThemes.filter(t => t.mode === "dark") as theme}
               <option value={theme.id}>{theme.label}</option>
             {/each}
           </optgroup>

@@ -5,7 +5,7 @@
   import { settingsStore } from "../../stores/settings";
   import { theme } from "../../stores/theme";
   import { renderMarkdown, renderMermaidBlocks, renderMermaidDocument, resolveRelativePath, type RenderResult } from "./markdown";
-  import { themes } from "./themes";
+  import { previewThemes } from "../themes/preview-themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
   import { ChevronUp, ChevronDown, X, CaseSensitive } from "lucide-svelte";
   import { triggerPreviewFindCount } from "../../stores/editor";
@@ -306,7 +306,7 @@
   $effect(() => {
     if (!result?.mermaidBlocks.length) return;
     const previewThemeId = $settingsStore.previewTheme;
-    const previewTheme = themes.find((entry) => entry.id === previewThemeId);
+    const previewTheme = previewThemes.find((entry) => entry.id === previewThemeId);
     const dark = previewTheme ? previewTheme.mode === "dark" : $theme === "dark";
     const mermaidLabels = {
       source: t("mermaid.source"),
@@ -714,6 +714,53 @@
   .markdown-body {
     max-width: 100%;
     margin: 0 auto;
+  }
+
+  /* Markdown element colors driven by preview-theme CSS variables.
+     The `.preview` prefix gives higher specificity than the legacy CSS
+     injected by applyTheme(), so these win the cascade. */
+  .preview :global(.markdown-body) {
+    color: var(--text-color);
+  }
+
+  .preview :global(.markdown-body h1),
+  .preview :global(.markdown-body h2),
+  .preview :global(.markdown-body h3),
+  .preview :global(.markdown-body h4),
+  .preview :global(.markdown-body h5),
+  .preview :global(.markdown-body h6) {
+    color: var(--heading-color);
+  }
+
+  .preview :global(.markdown-body a) {
+    color: var(--link-color);
+  }
+
+  .preview :global(.markdown-body a:hover) {
+    color: var(--link-hover-color);
+  }
+
+  .preview :global(.markdown-body blockquote) {
+    border-left: 0.25em solid var(--blockquote-border);
+    background-color: var(--blockquote-bg);
+    padding-left: 1em;
+    margin: 0.75em 0;
+  }
+
+  .preview :global(.markdown-body hr) {
+    height: 1px;
+    border: 0;
+    background-color: var(--border-divider);
+    margin: 1.5em 0;
+  }
+
+  .preview :global(.markdown-body del),
+  .preview :global(.markdown-body s) {
+    color: var(--text-muted);
+  }
+
+  .preview :global(.markdown-body mark) {
+    background-color: var(--bg-hover);
   }
 
   .preview :global(.markdown-body img) {

@@ -6,10 +6,12 @@
   import { emit, listen } from "@tauri-apps/api/event";
   import { Minus, Square, X } from "lucide-svelte";
   import { getRecentList, type RecentEntry } from "../../stores/vaultHistory";
+  import { settingsStore } from "../../stores/settings";
+  import { previewThemes } from "../themes/preview-themes";
   import { t } from "../i18n/i18n.svelte";
 
   interface MenuAction {
-    type: "emit" | "invoke" | "exec" | "window";
+    type: "emit" | "invoke" | "exec" | "window" | "theme" | "previewTheme";
     payload: string;
   }
 
@@ -19,6 +21,7 @@
     separator?: boolean;
     submenu?: MenuItem[];
     disabled?: boolean;
+    checked?: boolean;
   }
 
   interface MenuCategory {
@@ -95,7 +98,9 @@
     {
       label: t("menu.file"),
       items: [
+        { label: t("menu.newFile"), action: { type: "invoke", payload: "new_file_window" } },
         { label: t("menu.newWindow"), action: { type: "invoke", payload: "create_new_window" } },
+        { separator: true },
         { label: t("menu.createDirectory"), action: { type: "emit", payload: "menu-create-vault" } },
         { label: t("menu.openVault"), action: { type: "emit", payload: "menu-open-vault" } },
         { label: t("menu.openFile"), action: { type: "emit", payload: "menu-open-file" } },
@@ -103,6 +108,9 @@
           label: t("menu.openRecent"),
           submenu: buildRecentSubmenu(recentList),
         },
+        { separator: true },
+        { label: t("menu.save"), action: { type: "emit", payload: "menu-save" } },
+        { label: t("menu.saveAs"), action: { type: "emit", payload: "menu-save-as" } },
         { separator: true },
         { label: t("menu.closeWindow"), action: { type: "window", payload: "close" } },
       ],
@@ -128,6 +136,37 @@
         { label: t("menu.zoomIn"), action: { type: "emit", payload: "menu-zoom-in" } },
         { label: t("menu.zoomOut"), action: { type: "emit", payload: "menu-zoom-out" } },
         { label: t("menu.actualSize"), action: { type: "emit", payload: "menu-zoom-reset" } },
+      ],
+    },
+    {
+      label: t("menu.theme"),
+      items: [
+        {
+          label: t("menu.themeSystem"),
+          checked: $settingsStore.previewTheme === "system",
+          action: { type: "theme", payload: "system" },
+        },
+        { separator: true },
+        {
+          label: t("menu.themeLight"),
+          submenu: previewThemes
+            .filter((th) => th.mode === "light")
+            .map((th) => ({
+              label: th.label,
+              checked: $settingsStore.previewTheme === th.id,
+              action: { type: "previewTheme", payload: th.id },
+            })),
+        },
+        {
+          label: t("menu.themeDark"),
+          submenu: previewThemes
+            .filter((th) => th.mode === "dark")
+            .map((th) => ({
+              label: th.label,
+              checked: $settingsStore.previewTheme === th.id,
+              action: { type: "previewTheme", payload: th.id },
+            })),
+        },
       ],
     },
     {
@@ -205,6 +244,12 @@
       case "invoke":
         await invoke(action.payload);
         break;
+      case "theme":
+        settingsStore.setThemeMode(action.payload as "light" | "dark" | "system");
+        break;
+      case "previewTheme":
+        settingsStore.setPreviewTheme(action.payload);
+        break;
       case "exec":
         document.execCommand(action.payload);
         break;
@@ -220,6 +265,18 @@
 
   function onHeaderClick(i: number) {
     openMenu = openMenu === i ? null : i;
+  }
+
+  function handleTitlebarMouseDown(e: MouseEvent) {
+    // Double-clicking the titlebar zooms the window. On macOS Tauri does not
+    // preventDefault the double-click (so the system zoom can be cancelled by
+    // moving the mouse), which would let the webview select header text. Block
+    // it here while leaving interactive controls (menu buttons, window
+    // controls) untouched.
+    if (e.detail !== 2) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, [role='menuitem']")) return;
+    e.preventDefault();
   }
 
   function onHeaderEnter(i: number) {
@@ -238,7 +295,7 @@
 
 {#if osType !== "macos"}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="titlebar" data-tauri-drag-region onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') openMenu = null; }}>
+  <div class="titlebar" data-tauri-drag-region onclick={(e) => e.stopPropagation()} onmousedown={handleTitlebarMouseDown} onkeydown={(e) => { if (e.key === 'Escape') openMenu = null; }}>
     <div class="menu-group">
       {#each menus as menu, i}
         <div class="menu-category">
@@ -274,7 +331,7 @@
                             role="menuitem"
                             onclick={(e) => handleAction(subitem.action, e)}
                           >
-                            {subitem.label}
+                            <span class="menu-check">{subitem.checked ? "✓" : ""}</span>{subitem.label}
                           </button>
                         {/if}
                       {/each}
@@ -288,7 +345,7 @@
                     role="menuitem"
                     onclick={(e) => handleAction(item.action, e)}
                   >
-                    {item.label}
+                    <span class="menu-check">{item.checked ? "✓" : ""}</span>{item.label}
                   </button>
                 {/if}
               {/each}
@@ -319,6 +376,8 @@
     background: var(--header-bg);
     flex-shrink: 0;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
     z-index: 9999;
   }
 
@@ -350,6 +409,8 @@
     white-space: nowrap;
     display: flex;
     align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .menu-header:hover,
@@ -398,6 +459,8 @@
     left: 100%;
     top: -4px;
     min-width: 200px;
+    max-height: 400px;
+    overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border-divider);
     border-radius: 6px;
@@ -419,6 +482,7 @@
     letter-spacing: 0.5px;
     pointer-events: none;
     user-select: none;
+    -webkit-user-select: none;
   }
 
   .menu-item-btn {
@@ -433,10 +497,20 @@
     cursor: pointer;
     border-radius: 4px;
     white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .menu-item-btn:hover {
     background: var(--bg-hover);
+  }
+
+  .menu-check {
+    display: inline-block;
+    width: 16px;
+    margin-right: 4px;
+    color: var(--interactive-accent, #4f8cff);
+    font-size: 12px;
   }
 
   .menu-separator {
@@ -463,6 +537,8 @@
     color: var(--text-normal);
     cursor: pointer;
     transition: background 0.1s ease;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .control-btn:hover {

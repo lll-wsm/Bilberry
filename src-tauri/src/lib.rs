@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, AtomicBool, Ordering};
 use tauri::{Emitter, Manager, State};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem, CheckMenuItemBuilder};
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 
@@ -20,12 +20,30 @@ fn create_new_window(app: tauri::AppHandle) {
     builder.build().ok();
 }
 
+/// Open a new window with an untitled document ready to edit.
+#[tauri::command]
+fn new_file_window(app: tauri::AppHandle) {
+    let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
+    #[allow(unused_mut)]
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html?untitled=1".into()))
+        .title("")
+        .inner_size(720.0, 680.0)
+        .min_inner_size(500.0, 400.0);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
+    }
+    builder.build().ok();
+}
+
 static WINDOW_COUNT: AtomicU32 = AtomicU32::new(1);
 
 struct AppState {
     pending_files: Mutex<Vec<String>>,
     frontend_ready: AtomicBool,
     menu_language: Mutex<String>,
+    theme: Mutex<String>,
+    preview_theme: Mutex<String>,
 }
 
 pub struct WatcherState {
@@ -70,10 +88,13 @@ fn menu_label<'a>(language: &str, key: &'a str) -> &'a str {
         "quit" => if zh { "退出" } else { "Quit" },
         "file" => if zh { "文件" } else { "File" },
         "new_window" => if zh { "新建窗口" } else { "New Window" },
+        "new_file" => if zh { "新建文件" } else { "New File" },
         "create_directory" => if zh { "创建目录…" } else { "Create Directory…" },
         "open_vault" => if zh { "打开目录…" } else { "Open Vault…" },
         "open_file" => if zh { "打开文件…" } else { "Open File…" },
         "open_recent" => if zh { "打开最近使用" } else { "Open Recent" },
+        "save" => if zh { "保存" } else { "Save" },
+        "save_as" => if zh { "另存为…" } else { "Save As…" },
         "close_window" => if zh { "关闭窗口" } else { "Close Window" },
         "edit" => if zh { "编辑" } else { "Edit" },
         "undo" => if zh { "撤销" } else { "Undo" },
@@ -89,6 +110,10 @@ fn menu_label<'a>(language: &str, key: &'a str) -> &'a str {
         "zoom_in" => if zh { "放大" } else { "Zoom In" },
         "zoom_out" => if zh { "缩小" } else { "Zoom Out" },
         "actual_size" => if zh { "实际大小" } else { "Actual Size" },
+        "theme" => if zh { "主题" } else { "Theme" },
+        "theme_system" => if zh { "跟随系统" } else { "Follow System" },
+        "theme_light" => if zh { "浅色" } else { "Light" },
+        "theme_dark" => if zh { "深色" } else { "Dark" },
         "window" => if zh { "窗口" } else { "Window" },
         "minimize" => if zh { "最小化" } else { "Minimize" },
         "zoom" => if zh { "缩放" } else { "Zoom" },
@@ -109,6 +134,30 @@ fn current_language(app: &tauri::AppHandle) -> String {
                 .unwrap_or_else(|_| "en".to_string())
         })
         .unwrap_or_else(|| "en".to_string())
+}
+
+fn current_preview_theme(app: &tauri::AppHandle) -> String {
+    app.try_state::<AppState>()
+        .map(|s| {
+            s.preview_theme
+                .lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_else(|_| "system".to_string())
+        })
+        .unwrap_or_else(|| "system".to_string())
+}
+
+/// All available preview themes: (id, label, mode).
+/// Kept in sync with `src/lib/themes/preview-themes.ts`.
+fn theme_list() -> &'static [(&'static str, &'static str, &'static str)] {
+    &[
+        ("default", "Default", "light"),
+        ("solarized-light", "Solarized Light", "light"),
+        ("typo", "Typo", "light"),
+        ("cobalt", "Cobalt", "dark"),
+        ("solarized-dark", "Solarized Dark", "dark"),
+        ("toothpaste", "Toothpaste", "dark"),
+    ]
 }
 
 fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
@@ -132,8 +181,12 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&PredefinedMenuItem::quit(app, Some(menu_label(&language, "quit")))?)
         .build()?;
 
-    let new_window = MenuItemBuilder::with_id("new_window", menu_label(&language, "new_window"))
+    let new_file = MenuItemBuilder::with_id("new_file", menu_label(&language, "new_file"))
         .accelerator("CmdOrCtrl+N")
+        .build(app)?;
+
+    let new_window = MenuItemBuilder::with_id("new_window", menu_label(&language, "new_window"))
+        .accelerator("CmdOrCtrl+Shift+N")
         .build(app)?;
 
     let create_vault = MenuItemBuilder::with_id("create_vault", menu_label(&language, "create_directory"))
@@ -207,17 +260,29 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
 
     let open_recent_menu = recent_menu_builder.build()?;
 
+    let save = MenuItemBuilder::with_id("save", menu_label(&language, "save"))
+        .accelerator("CmdOrCtrl+S")
+        .build(app)?;
+
+    let save_as = MenuItemBuilder::with_id("save_as", menu_label(&language, "save_as"))
+        .accelerator("CmdOrCtrl+Shift+S")
+        .build(app)?;
+
     let close_window = MenuItemBuilder::with_id("close_window", menu_label(&language, "close_window"))
         .accelerator("CmdOrCtrl+W")
         .build(app)?;
 
     let file_menu = SubmenuBuilder::new(app, menu_label(&language, "file"))
+        .item(&new_file)
         .item(&new_window)
         .separator()
         .item(&create_vault)
         .item(&open_vault)
         .item(&open_file)
         .item(&open_recent_menu)
+        .separator()
+        .item(&save)
+        .item(&save_as)
         .separator()
         .item(&close_window)
         .build()?;
@@ -276,11 +341,47 @@ fn build_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, t
         .item(&PredefinedMenuItem::show_all(app, Some(menu_label(&language, "show_all")))?)
         .build()?;
 
+    // Theme menu: System + all preview themes grouped into Light/Dark submenus.
+    // The checked item follows the preview theme stored via `set_preview_theme`;
+    // selecting an item emits an event so the frontend applies the theme and
+    // echoes it back through `set_preview_theme`.
+    let current_preview = current_preview_theme(app);
+
+    let theme_system = CheckMenuItemBuilder::with_id("theme_system", menu_label(&language, "theme_system"))
+        .checked(current_preview == "system")
+        .build(app)?;
+
+    let mut light_builder = SubmenuBuilder::new(app, menu_label(&language, "theme_light"));
+    for (id, label, _mode) in theme_list().iter().filter(|(_, _, m)| *m == "light") {
+        let item = CheckMenuItemBuilder::with_id(&format!("theme_preview_{}", id), label)
+            .checked(current_preview == *id)
+            .build(app)?;
+        light_builder = light_builder.item(&item);
+    }
+    let light_submenu = light_builder.build()?;
+
+    let mut dark_builder = SubmenuBuilder::new(app, menu_label(&language, "theme_dark"));
+    for (id, label, _mode) in theme_list().iter().filter(|(_, _, m)| *m == "dark") {
+        let item = CheckMenuItemBuilder::with_id(&format!("theme_preview_{}", id), label)
+            .checked(current_preview == *id)
+            .build(app)?;
+        dark_builder = dark_builder.item(&item);
+    }
+    let dark_submenu = dark_builder.build()?;
+
+    let theme_menu = SubmenuBuilder::new(app, menu_label(&language, "theme"))
+        .item(&theme_system)
+        .separator()
+        .item(&light_submenu)
+        .item(&dark_submenu)
+        .build()?;
+
     MenuBuilder::new(app)
         .item(&app_menu)
         .item(&file_menu)
         .item(&edit_menu)
         .item(&view_menu)
+        .item(&theme_menu)
         .item(&window_menu)
         .build()
 }
@@ -304,6 +405,32 @@ fn set_language(app: tauri::AppHandle, state: State<'_, AppState>, language: Str
     let mut current = state.menu_language.lock().unwrap();
     if *current != language {
         *current = language;
+        drop(current);
+        rebuild_menu(&app);
+    }
+}
+
+/// Stores the base theme (`"light"` / `"dark"` / `"system"`) so the native
+/// menu's theme checkmark stays in sync, and rebuilds the menu when it changed.
+/// Called by the frontend whenever the theme setting changes.
+#[tauri::command]
+fn set_theme(app: tauri::AppHandle, state: State<'_, AppState>, theme: String) {
+    let mut current = state.theme.lock().unwrap();
+    if *current != theme {
+        *current = theme;
+        drop(current);
+        rebuild_menu(&app);
+    }
+}
+
+/// Stores the selected preview theme id (e.g. `"dracula"`, `"system"`) so the
+/// native menu's per-theme checkmark stays in sync, and rebuilds the menu when
+/// it changed. Called by the frontend whenever the preview theme changes.
+#[tauri::command]
+fn set_preview_theme(app: tauri::AppHandle, state: State<'_, AppState>, theme: String) {
+    let mut current = state.preview_theme.lock().unwrap();
+    if *current != theme {
+        *current = theme;
         drop(current);
         rebuild_menu(&app);
     }
@@ -361,6 +488,8 @@ pub fn run() {
             pending_files: Mutex::new(Vec::new()),
             frontend_ready: AtomicBool::new(false),
             menu_language: Mutex::new("en".to_string()),
+            theme: Mutex::new("system".to_string()),
+            preview_theme: Mutex::new("system".to_string()),
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -423,6 +552,25 @@ pub fn run() {
                 "open_file" => {
                     app.emit("menu-open-file", ()).ok();
                 }
+                "new_file" => {
+                    let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
+                    #[allow(unused_mut)]
+                    let mut builder = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html?untitled=1".into()))
+                        .title("")
+                        .inner_size(720.0, 680.0)
+                        .min_inner_size(500.0, 400.0);
+                    #[cfg(target_os = "macos")]
+                    {
+                        builder = builder.title_bar_style(TitleBarStyle::Overlay).hidden_title(true);
+                    }
+                    builder.build().ok();
+                }
+                "save" => {
+                    app.emit("menu-save", ()).ok();
+                }
+                "save_as" => {
+                    app.emit("menu-save-as", ()).ok();
+                }
                 "new_window" => {
                     let label = format!("window-{}", WINDOW_COUNT.fetch_add(1, Ordering::Relaxed));
                     #[allow(unused_mut)]
@@ -447,6 +595,9 @@ pub fn run() {
                 }
                 "toggle_sidebar" => {
                     app.emit("menu-toggle-sidebar", ()).ok();
+                }
+                "theme_system" => {
+                    app.emit("menu-set-theme", "system").ok();
                 }
                 "zoom" => {
                     if let Some(window) = app.get_webview_window("main") {
@@ -476,6 +627,8 @@ pub fn run() {
                                 app.emit("menu-open-recent", payload).ok();
                             }
                         }
+                    } else if let Some(theme_id) = id.strip_prefix("theme_preview_") {
+                        app.emit("menu-set-preview-theme", theme_id).ok();
                     }
                 }
             }
@@ -505,9 +658,12 @@ pub fn run() {
             commands::remove_from_recent,
             refresh_menu,
             set_language,
+            set_theme,
+            set_preview_theme,
             notify_frontend_ready,
             get_pending_files,
             create_new_window,
+            new_file_window,
             open_in_new_window,
             clear_recent_list,
         ])

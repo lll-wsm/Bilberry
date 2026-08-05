@@ -1,10 +1,10 @@
 <script lang="ts">
 import { onMount, untrack, tick } from "svelte";
-  import { EditorView, basicSetup } from "codemirror";
+  import { EditorView } from "codemirror";
   import { EditorState, Compartment, Prec } from "@codemirror/state";
   import { openSearchPanel } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
-  import { createExtensions, getLanguageExtension } from "./cm-extensions";
+  import { createBasicSetup, createExtensions, getLanguageExtension } from "./cm-extensions";
   import { theme } from "../../stores/theme";
   import { settingsStore } from "../../stores/settings";
   import { pendingNavRange, triggerFindCount } from "../../stores/editor";
@@ -138,6 +138,8 @@ import { onMount, untrack, tick } from "svelte";
   const themeCompartment = new Compartment();
   const languageCompartment = new Compartment();
   const contentPath = $derived($vaultStore.currentFilePath);
+  // For untitled documents (no path), default to Markdown highlighting.
+  const languagePath = $derived(contentPath ?? ($vaultStore.isUntitled ? "untitled.md" : null));
 
   function getThemeExt($theme: string): Extension {
     const baseTheme = $theme === "dark" ? oneDark : [];
@@ -155,10 +157,10 @@ import { onMount, untrack, tick } from "svelte";
         borderLeftColor: "var(--interactive-accent)",
       },
       ".cm-activeLine": {
-        backgroundColor: "rgba(128, 128, 128, 0.05)",
+        backgroundColor: "transparent",
       },
       ".cm-activeLineGutter": {
-        backgroundColor: "rgba(128, 128, 128, 0.1)",
+        backgroundColor: "transparent",
       },
       ".cm-gutters": {
         borderRight: "none",
@@ -179,9 +181,9 @@ import { onMount, untrack, tick } from "svelte";
     const state = EditorState.create({
       doc: content,
       extensions: [
-        basicSetup,
+        createBasicSetup(),
         ...createExtensions(),
-        languageCompartment.of(getLanguageExtension(contentPath)),
+        languageCompartment.of(getLanguageExtension(languagePath)),
         themeCompartment.of(initialTheme),
         EditorView.editable.of(!readonly),
         EditorView.updateListener.of((update) => {
@@ -479,7 +481,7 @@ import { onMount, untrack, tick } from "svelte";
   // Markdown/JSON files get language-aware highlighting and folding; plain
   // text files (.txt, .log, .csv, …) stay unstyled and fold-gutter-free.
   $effect(() => {
-    const path = contentPath;
+    const path = languagePath;
     if (!view || isDestroyed) return;
     view.dispatch({ effects: languageCompartment.reconfigure(getLanguageExtension(path)) });
   });
@@ -549,14 +551,31 @@ import { onMount, untrack, tick } from "svelte";
     line-height: inherit;
   }
 
+  /* Breathing room between the text and the pane edges. Matches the
+     preview's 32px side padding (`Preview.svelte`) so the edit pane and the
+     preview pane feel consistent in split mode. CodeMirror measures caret
+     and click positions from the rendered line boxes, so horizontal padding
+     on `.cm-line` is fully supported. Padding is on `.cm-line` (not
+     `.cm-content`) so the active-line background spans the full row width. */
+  .editor-container :global(.cm-content) {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .editor-container :global(.cm-line) {
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+
   .editor-container :global(.cm-editor.cm-focused) {
     outline: none;
   }
 
   .editor-container :global(.cm-gutters) {
     /* No fixed width: let CodeMirror auto-size the gutter so line numbers
-       (and the fold gutter) are never clipped, regardless of how many lines
-       the file has. */
+       (and the fold gutter) are never clipped. The gutter stays narrow on
+       huge files because `createBasicSetup()` compacts line numbers
+       ≥ 100,000 ("123k", "1.2M") via `lineNumbers({ formatNumber })`. */
     border: none !important;
     background-color: transparent !important;
   }
@@ -577,9 +596,17 @@ import { onMount, untrack, tick } from "svelte";
 
   .editor-container :global(.cm-lineNumbers .cm-gutterElement) {
     min-width: 1.6em;
-    padding: 0 8px 0 0 !important;
-    text-align: right !important;
+    padding: 0 8px 0 14px !important;
+    text-align: left !important;
     color: var(--text-muted) !important;
     font-size: 0.85em !important;
+  }
+
+  /* Active-line highlight: same color on both the gutter and the content
+     area so the background is continuous across the full row. `!important`
+     overrides theme-specific colors (e.g. oneDark's solid active-line bg). */
+  .editor-container :global(.cm-activeLine),
+  .editor-container :global(.cm-activeLineGutter) {
+    background-color: rgba(128, 128, 128, 0.07) !important;
   }
 </style>

@@ -60,6 +60,8 @@ interface VaultState {
   isSingleFile: boolean;
   /** True while a file read is in flight (distinct from `loading`, which is also set by tree refreshes). */
   fileLoading: boolean;
+  /** True for an in-memory untitled document that has no file on disk yet. */
+  isUntitled: boolean;
 }
 
 const initialState: VaultState = {
@@ -75,6 +77,7 @@ const initialState: VaultState = {
   loading: false,
   isSingleFile: false,
   fileLoading: false,
+  isUntitled: false,
 };
 
 export function isMarkdownPath(path: string | null | undefined): boolean {
@@ -219,6 +222,68 @@ function createVaultStore() {
         return { ...s, currentEncoding: encoding };
       });
     },
+
+    /** Start editing a new untitled document (in-memory, no file on disk). */
+    newUntitled() {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      lastSavedContent = "";
+      lastSavedEncoding = "UTF-8";
+      editorStore.setMode("source");
+      update((s) => ({
+        ...s,
+        isUntitled: true,
+        currentFilePath: null,
+        currentContent: "",
+        currentEncoding: "UTF-8",
+        fileLoading: false,
+        loading: false,
+      }));
+    },
+
+    /** Write the current content to a chosen path and switch to normal file mode. */
+    async saveAsFile(path: string) {
+      let content = "";
+      let encoding = "UTF-8";
+      let hasVault = false;
+      update((s) => {
+        content = s.currentContent;
+        encoding = s.currentEncoding;
+        hasVault = s.vault !== null;
+        return s;
+      });
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      await invoke("write_note", { path, content, encoding });
+      markSelfSave(path, content);
+      lastSavedContent = content;
+      lastSavedEncoding = encoding;
+      editorStore.syncModeForFile(isPreviewableTextPath(path));
+      update((s) => ({
+        ...s,
+        isUntitled: false,
+        currentFilePath: path,
+        currentContent: content,
+        currentEncoding: encoding,
+      }));
+      if (hasVault) {
+        await this.refreshFileTree();
+      }
+      await addToRecent(path, "file");
+    },
+
+    /** Explicit save (Cmd+S). Flushes immediately if a path exists; no-op for untitled. */
+    async saveCurrent() {
+      let path: string | null = null;
+      let content = "";
+      update((s) => {
+        path = s.currentFilePath;
+        content = s.currentContent;
+        return s;
+      });
+      if (path) {
+        await this.saveNote(path, content);
+      }
+    },
+
     async openVault(path: string) {
       await this.ensureSaved();
       update((s) => ({ ...s, loading: true }));
@@ -319,6 +384,7 @@ function createVaultStore() {
             ...s,
             vault,
             isSingleFile: true,
+            isUntitled: false,
             fileTree,
             loading: true,
             fileLoading: true,
@@ -339,6 +405,7 @@ function createVaultStore() {
         } else {
           update((s) => ({
             ...s,
+            isUntitled: false,
             loading: true,
             fileLoading: true,
             currentFilePath: path,
@@ -435,6 +502,7 @@ function createVaultStore() {
 
       update((s) => ({
         ...s,
+        isUntitled: false,
         loading: true,
         fileLoading: true,
         currentFilePath: path,
@@ -490,6 +558,7 @@ function createVaultStore() {
       update((s) => {
         const newState = {
           ...s,
+          isUntitled: false,
           currentFilePath: null,
           currentContent: "",
           currentEncoding: "UTF-8",
@@ -552,12 +621,12 @@ function createVaultStore() {
     },
 
     updateContent(path: string | null, content: string) {
+      let encoding = "UTF-8";
+      update((s) => {
+        encoding = s.currentEncoding;
+        return { ...s, currentContent: content };
+      });
       if (path && !isImagePath(path)) {
-        let encoding = "UTF-8";
-        update((s) => {
-          encoding = s.currentEncoding;
-          return { ...s, currentContent: content };
-        });
         debouncedSave(path, content, encoding);
       }
     },
@@ -581,7 +650,7 @@ function createVaultStore() {
       const unsub = subscribe((s) => { current = s; });
       unsub();
 
-      if (!current || current.loading || !current.currentFilePath) return;
+      if (!current || current.loading || current.isUntitled || !current.currentFilePath) return;
 
       if (lastSavedContent !== current.currentContent || lastSavedEncoding !== current.currentEncoding) {
         markSelfSave(current.currentFilePath, current.currentContent);
@@ -711,9 +780,9 @@ function flattenFileTree(entries: FileEntry[]): { path: string; name: string }[]
 
 export const currentFile = derived(vaultStore, ($v) => $v.currentFilePath);
 export const isVaultOpen = derived(vaultStore, ($v) => $v.vault !== null);
-export const currentFileIsMarkdown = derived(vaultStore, ($v) => isMarkdownPath($v.currentFilePath));
+export const currentFileIsMarkdown = derived(vaultStore, ($v) => isMarkdownPath($v.currentFilePath) || $v.isUntitled);
 export const currentFileIsMermaid = derived(vaultStore, ($v) => isMermaidPath($v.currentFilePath));
-export const currentFileSupportsPreview = derived(vaultStore, ($v) => isPreviewableTextPath($v.currentFilePath));
+export const currentFileSupportsPreview = derived(vaultStore, ($v) => isPreviewableTextPath($v.currentFilePath) || $v.isUntitled);
 export const currentFileIsImage = derived(vaultStore, ($v) => isImagePath($v.currentFilePath));
 
 // Subscribe to settings changes to refresh file tree when showHiddenFiles changes

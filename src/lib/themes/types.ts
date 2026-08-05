@@ -35,6 +35,7 @@ export interface UITheme {
 }
 
 export interface PreviewColors {
+  bgPrimary: string;
   textColor: string;
   headingColor: string;
   linkColor: string;

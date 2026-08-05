@@ -10,11 +10,20 @@
   });
 
   const filename = $derived($vaultStore.currentFilePath?.split("/").pop() ?? "");
+
+  function handleMouseDown(e: MouseEvent) {
+    // Double-clicking the titlebar zooms the window. Tauri deliberately does
+    // NOT preventDefault the double-click on macOS (so the system zoom can be
+    // cancelled by moving the mouse), which means the webview would otherwise
+    // select the header text. Block the selection here; the zoom itself is
+    // still handled by Tauri's drag-region script.
+    if (e.detail === 2) e.preventDefault();
+  }
 </script>
 
 {#if osType === "macos"}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="titlebar" data-tauri-drag-region>
+  <div class="titlebar" data-tauri-drag-region onmousedown={handleMouseDown}>
     <span class="filename" data-tauri-drag-region>
       {filename || "Bilberry"}
     </span>
@@ -30,6 +39,8 @@
     flex-shrink: 0;
     z-index: 9999;
     position: relative;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .filename {
@@ -41,6 +52,7 @@
     color: var(--text-muted);
     font-weight: 500;
     user-select: none;
+    -webkit-user-select: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
