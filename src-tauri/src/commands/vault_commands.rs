@@ -8,7 +8,7 @@ pub fn open_vault(
     path: String,
     window: Window,
     watcher_state: State<'_, WatcherState>,
-    search_state: State<'_, SearchState>,
+    _search_state: State<'_, SearchState>,
 ) -> Result<Vault, String> {
     let vault = Vault::open(&path)?;
 
