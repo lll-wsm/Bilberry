@@ -1,6 +1,7 @@
 <script lang="ts">
   import { settingsStore } from "../../stores/settings";
   import { themes } from "../preview/themes";
+  import { t } from "../i18n/i18n.svelte";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
 
@@ -10,6 +11,7 @@
   let autoSaveDelay = $state($settingsStore.autoSaveDelay);
   let previewTheme = $state($settingsStore.previewTheme);
   let showHiddenFiles = $state($settingsStore.showHiddenFiles);
+  let language = $state($settingsStore.language);
 
   $effect(() => {
     if (show) {
@@ -19,6 +21,7 @@
       autoSaveDelay = $settingsStore.autoSaveDelay;
       previewTheme = $settingsStore.previewTheme;
       showHiddenFiles = $settingsStore.showHiddenFiles;
+      language = $settingsStore.language;
     }
   });
 
@@ -28,6 +31,7 @@
     settingsStore.updateSetting("lineHeight", lineHeight);
     settingsStore.updateSetting("autoSaveDelay", autoSaveDelay);
     settingsStore.updateSetting("showHiddenFiles", showHiddenFiles);
+    settingsStore.updateSetting("language", language);
     
     // Logic: if previewTheme is 'system', app base theme is also 'system'.
     // Otherwise, app base theme matches the preview theme's mode.
@@ -59,27 +63,36 @@
   <div class="overlay" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
-      <h2>设置</h2>
+      <h2>{t("settings.title")}</h2>
 
       <div class="field">
-        <label for="previewTheme">界面外观与主题</label>
+        <label for="previewTheme">{t("settings.appearanceAndTheme")}</label>
         <select id="previewTheme" value={previewTheme} onchange={handleThemeChange}>
-          <option value="system">自动 (跟随系统)</option>
-          <optgroup label="浅色主题">
-            {#each themes.filter(t => t.mode === "light" && t.id !== "default") as t}
-              <option value={t.id}>{t.label}</option>
+          <option value="system">{t("settings.followSystem")}</option>
+          <optgroup label={t("settings.lightThemes")}>
+            {#each themes.filter(t => t.mode === "light" && t.id !== "default") as theme}
+              <option value={theme.id}>{theme.label}</option>
             {/each}
           </optgroup>
-          <optgroup label="深色主题">
-            {#each themes.filter(t => t.mode === "dark") as t}
-              <option value={t.id}>{t.label}</option>
+          <optgroup label={t("settings.darkThemes")}>
+            {#each themes.filter(t => t.mode === "dark") as theme}
+              <option value={theme.id}>{theme.label}</option>
             {/each}
           </optgroup>
         </select>
       </div>
 
       <div class="field">
-        <label for="fontSize">字号</label>
+        <label for="language">{t("settings.language")}</label>
+        <select id="language" bind:value={language}>
+          <option value="system">{t("settings.languageSystem")}</option>
+          <option value="zh">{t("settings.languageChinese")}</option>
+          <option value="en">{t("settings.languageEnglish")}</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="fontSize">{t("settings.fontSize")}</label>
         <div class="input-row">
           <input
             id="fontSize"
@@ -93,16 +106,16 @@
       </div>
 
       <div class="field">
-        <label for="fontFamily">字体</label>
+        <label for="fontFamily">{t("settings.fontFamily")}</label>
         <select id="fontFamily" bind:value={fontFamily}>
-          <option value="SF Mono, Fira Code, Cascadia Code, monospace">等宽 (SF Mono / Fira Code / monospace)</option>
-          <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">无衬线 (System UI / Sans-serif)</option>
-          <option value="Georgia, 'Times New Roman', Times, serif">衬线 (Georgia / Serif)</option>
+          <option value="SF Mono, Fira Code, Cascadia Code, monospace">{t("settings.fontMonospace")}</option>
+          <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">{t("settings.fontSansSerif")}</option>
+          <option value="Georgia, 'Times New Roman', Times, serif">{t("settings.fontSerif")}</option>
         </select>
       </div>
 
       <div class="field">
-        <label for="lineHeight">行高</label>
+        <label for="lineHeight">{t("settings.lineHeight")}</label>
         <div class="input-row">
           <input
             id="lineHeight"
@@ -117,7 +130,7 @@
       </div>
 
       <div class="field">
-        <label for="autoSaveDelay">自动保存延迟</label>
+        <label for="autoSaveDelay">{t("settings.autoSaveDelay")}</label>
         <div class="input-row">
           <input
             id="autoSaveDelay"
@@ -137,13 +150,13 @@
             type="checkbox"
             bind:checked={showHiddenFiles}
           />
-          显示隐藏文件或目录 (默认显示)
+          {t("settings.showHiddenFiles")}
         </label>
       </div>
 
       <div class="actions">
-        <button class="btn primary" onclick={save}>保存</button>
-        <button class="btn" onclick={onclose}>取消</button>
+        <button class="btn primary" onclick={save}>{t("common.save")}</button>
+        <button class="btn" onclick={onclose}>{t("common.cancel")}</button>
       </div>
     </div>
   </div>

@@ -20,6 +20,7 @@
   import ContextMenu from "./ui/ContextMenu.svelte";
   import Titlebar from "./ui/Titlebar.svelte";
   import MenuBar from "./ui/MenuBar.svelte";
+  import { initI18n, t } from "./i18n/i18n.svelte";
 
   // Apply the cached preview theme immediately to prevent flash
   themeManager.initSync();
@@ -38,6 +39,11 @@
   });
 
   onMount(() => {
+    // Resolve the UI language (system-detected or user override) and keep the
+    // native application menu in sync.
+    initI18n();
+
+
     let disposed = false;
     let hasOpenedFile = false;
 
@@ -130,7 +136,7 @@
           vaultStore.openSingleFile(event.payload).then(() => {
             addToRecent(event.payload, "file");
           }).catch((e) => {
-            alert("无法打开文件: " + e);
+            alert(t("alert.openFileError", { error: String(e) }));
           });
         }),
         listen("menu-zoom-in", () => {
@@ -205,7 +211,7 @@
       try {
         await invoke("open_in_new_window", { filePath: path });
       } catch (e) {
-        alert("打开新窗口失败: " + e);
+        alert(t("alert.openNewWindowFailed", { error: String(e) }));
       }
     } else {
       try {
@@ -216,7 +222,7 @@
         }
         addToRecent(path, "file");
       } catch {
-        alert("无法打开文件: " + path);
+        alert(t("alert.cannotOpenFile", { path }));
       }
     }
   }
@@ -258,14 +264,14 @@
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "选择目录",
+      title: t("dialog.selectDirectory"),
     });
     if (selected) {
       if (newWindow) {
         try {
           await invoke("open_in_new_window", { vaultPath: selected });
         } catch (e) {
-          alert("打开新窗口失败: " + e);
+          alert(t("alert.openNewWindowFailed", { error: String(e) }));
         }
       } else {
         try {
@@ -275,7 +281,7 @@
           await addToHistory(selected);
           recentDirs = await loadHistory();
         } catch (e) {
-          alert("打开目录失败: " + e);
+          alert(t("alert.openDirectoryFailed", { error: String(e) }));
         }
       }
     }
@@ -286,7 +292,7 @@
       directory: true,
       multiple: false,
       canCreateDirectories: true,
-      title: "新建或选择目录",
+      title: t("dialog.createOrSelectDirectory"),
     });
     if (selected) {
       try {
@@ -296,7 +302,7 @@
         await addToHistory(selected);
         recentDirs = await loadHistory();
       } catch (e) {
-        alert("打开目录失败: " + e);
+        alert(t("alert.openDirectoryFailed", { error: String(e) }));
       }
     }
   }
@@ -304,17 +310,17 @@
   async function handleOpenFile() {
     const selected = await open({
       multiple: true,
-      title: "选择文件",
+      title: t("dialog.selectFiles"),
       filters: [
         {
-          name: "Supported",
+          name: t("dialog.filterSupported"),
           extensions: [
             "md", "markdown", "mmd", "mermaid",
             "txt", "json", "log", "csv",
             "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif", "ico",
           ],
         },
-        { name: "All Files", extensions: ["*"] },
+        { name: t("dialog.filterAllFiles"), extensions: ["*"] },
       ],
     });
     if (selected) {
@@ -331,7 +337,7 @@
       try {
         await invoke("open_in_new_window", { vaultPath: path });
       } catch (e) {
-        alert("打开新窗口失败: " + e);
+        alert(t("alert.openNewWindowFailed", { error: String(e) }));
       }
     } else {
       try {
@@ -341,7 +347,7 @@
         await addToHistory(path);
         recentDirs = await loadHistory();
       } catch (e) {
-        alert("打开目录失败: " + e);
+        alert(t("alert.openDirectoryFailed", { error: String(e) }));
         await removeFromHistory(path);
         recentDirs = await loadHistory();
       }
@@ -367,8 +373,11 @@
   <Titlebar />
   <MenuBar />
   <div class="layout">
-    {#if sidebarOpen && $vaultStore.vault}
-      <Sidebar />
+    {#if sidebarOpen}
+      <Sidebar
+        onOpenVault={() => handleOpenVault()}
+        onCreateVault={() => handleCreateVault()}
+      />
     {/if}
     <main class="main-content">
       {#if $vaultStore.vault}
@@ -379,7 +388,7 @@
           />
         {:else}
           <div class="empty-state">
-            <p>选择一篇笔记开始编辑</p>
+            <p>{t("empty.selectNoteToEdit")}</p>
           </div>
         {/if}
       {:else}

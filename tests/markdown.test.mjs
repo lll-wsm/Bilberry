@@ -101,8 +101,8 @@ test("formats mermaid errors as inline preview markup", () => {
 
   assert.match(html, /class="mermaid-error"/);
   assert.match(html, /class="mermaid-error-source"/);
-  assert.match(html, /Mermaid 源码/);
-  assert.match(html, /Mermaid 语法错误/);
+  assert.match(html, /Mermaid source/);
+  assert.match(html, /Mermaid syntax error/);
   assert.match(html, /<pre>/);
   assert.match(html, /A\[[\s\S]*&quot;x&quot;[\s\S]*\]/);
   assert.match(html, /graph TD/);

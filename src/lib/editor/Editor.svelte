@@ -4,7 +4,7 @@ import { onMount, untrack, tick } from "svelte";
   import { EditorState, Compartment, Prec } from "@codemirror/state";
   import { openSearchPanel } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
-  import { createExtensions } from "./cm-extensions";
+  import { createExtensions, getLanguageExtension } from "./cm-extensions";
   import { theme } from "../../stores/theme";
   import { settingsStore } from "../../stores/settings";
   import { pendingNavRange, triggerFindCount } from "../../stores/editor";
@@ -26,6 +26,7 @@ import { onMount, untrack, tick } from "svelte";
   let view: EditorView;
   let isDestroyed = false;
   let isSyncing = false;
+  let isLocalEdit = false;
   let scrollerEl: HTMLElement | null = null;
   let hasAppliedInitialScroll = false;
   let lastAppliedScrollRatio: number | null = null;
@@ -135,6 +136,7 @@ import { onMount, untrack, tick } from "svelte";
   }
 
   const themeCompartment = new Compartment();
+  const languageCompartment = new Compartment();
   const contentPath = $derived($vaultStore.currentFilePath);
 
   function getThemeExt($theme: string): Extension {
@@ -179,10 +181,12 @@ import { onMount, untrack, tick } from "svelte";
       extensions: [
         basicSetup,
         ...createExtensions(),
+        languageCompartment.of(getLanguageExtension(contentPath)),
         themeCompartment.of(initialTheme),
         EditorView.editable.of(!readonly),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isSyncing && onContentChange) {
+            isLocalEdit = true;
             onContentChange(update.state.doc.toString());
           }
           if (update.selectionSet && !isSyncing && contentPath) {
@@ -393,6 +397,7 @@ import { onMount, untrack, tick } from "svelte";
     scrollerEl?.addEventListener("mouseleave", handleMouseLeave);
     window.addEventListener("keyup", handleKeyUp);
 
+
     // Reactive theme switch
     const unsubTheme = theme.subscribe(($theme) => {
       try {
@@ -426,14 +431,29 @@ import { onMount, untrack, tick } from "svelte";
     if (!view || isDestroyed) return;
     const current = view.state.doc.toString();
 
-    // Sync content
+    // Sync content — but skip when the change originated from the editor
+    // itself (user typing).  Without this guard the reactive round-trip
+    // (editor → store → prop → $effect) causes a full-document replacement
+    // that destroys cursor position and scroll state, especially on large files.
     if (text !== current) {
-      isSyncing = true;
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: text },
-      });
-      isSyncing = false;
+      if (isLocalEdit) {
+        isLocalEdit = false;
+      } else {
+        isSyncing = true;
+        view.dispatch({
+          changes: { from: 0, to: current.length, insert: text },
+        });
+        isSyncing = false;
+        // Content (and thus line metrics) changed - force a fresh viewport
+        // measurement so posAtCoords/clicks never rely on stale coordinates.
+        tick().then(() => {
+          if (view && !isDestroyed) view.requestMeasure();
+        });
+      }
+    } else {
+      isLocalEdit = false;
     }
+
 
     // Navigate cursor and select match range after content is synced
     if (navRange !== null) {
@@ -453,6 +473,15 @@ import { onMount, untrack, tick } from "svelte";
       openSearchPanel(view);
       untrack(() => triggerFindCount.set(0));
     }
+  });
+
+  // Switch the language parser when the active file changes so that only
+  // Markdown/JSON files get language-aware highlighting and folding; plain
+  // text files (.txt, .log, .csv, …) stay unstyled and fold-gutter-free.
+  $effect(() => {
+    const path = contentPath;
+    if (!view || isDestroyed) return;
+    view.dispatch({ effects: languageCompartment.reconfigure(getLanguageExtension(path)) });
   });
 
   $effect(() => {
@@ -525,7 +554,9 @@ import { onMount, untrack, tick } from "svelte";
   }
 
   .editor-container :global(.cm-gutters) {
-    width: 32px !important;
+    /* No fixed width: let CodeMirror auto-size the gutter so line numbers
+       (and the fold gutter) are never clipped, regardless of how many lines
+       the file has. */
     border: none !important;
     background-color: transparent !important;
   }
@@ -534,7 +565,18 @@ import { onMount, untrack, tick } from "svelte";
     background-color: transparent !important;
   }
 
+  /* Hide the fold gutter so the line-number area is identical for markdown
+     and non-markdown files (fold ranges only exist in markdown, which made
+     the gutter wider there). Folding still works via the keyboard.
+     `!important` is required because CodeMirror injects its own
+     `.cm-gutter { display: flex }` theme rule at runtime, which would
+     otherwise win the cascade (equal specificity, later source order). */
+  .editor-container :global(.cm-foldGutter) {
+    display: none !important;
+  }
+
   .editor-container :global(.cm-lineNumbers .cm-gutterElement) {
+    min-width: 1.6em;
     padding: 0 8px 0 0 !important;
     text-align: right !important;
     color: var(--text-muted) !important;

@@ -6,6 +6,7 @@
   import { emit, listen } from "@tauri-apps/api/event";
   import { Minus, Square, X } from "lucide-svelte";
   import { getRecentList, type RecentEntry } from "../../stores/vaultHistory";
+  import { t } from "../i18n/i18n.svelte";
 
   interface MenuAction {
     type: "emit" | "invoke" | "exec" | "window";
@@ -40,7 +41,7 @@
 
   function buildRecentSubmenu(list: RecentEntry[]): MenuItem[] {
     if (list.length === 0) {
-      return [{ label: "No Recent Items", disabled: true }];
+      return [{ label: t("menu.noRecentItems"), disabled: true }];
     }
 
     const items: MenuItem[] = [];
@@ -48,7 +49,7 @@
     const files = list.filter(e => e.kind === "file");
 
     if (folders.length > 0) {
-      items.push({ label: "Folders", disabled: true });
+      items.push({ label: t("menu.folders"), disabled: true });
       folders.forEach((entry) => {
         const name = entry.path.split("/").pop() || entry.path;
         items.push({
@@ -63,7 +64,7 @@
     }
 
     if (files.length > 0) {
-      items.push({ label: "Files", disabled: true });
+      items.push({ label: t("menu.files"), disabled: true });
       files.forEach((entry) => {
         const name = entry.path.split("/").pop() || entry.path;
         items.push({
@@ -75,7 +76,7 @@
 
     items.push({ separator: true });
     items.push({
-      label: "Clear Recently Opened",
+      label: t("menu.clearRecentlyOpened"),
       action: { type: "emit", payload: "menu-clear-recent" },
     });
 
@@ -84,56 +85,56 @@
 
   const menus = $derived<MenuCategory[]>([
     {
-      label: "Bilberry",
+      label: t("menu.bilberry"),
       items: [
-        { label: "Settings...", action: { type: "emit", payload: "menu-show-settings" } },
+        { label: t("menu.settings"), action: { type: "emit", payload: "menu-show-settings" } },
         { separator: true },
-        { label: "Quit", action: { type: "window", payload: "close" } },
+        { label: t("menu.quit"), action: { type: "window", payload: "close" } },
       ],
     },
     {
-      label: "File",
+      label: t("menu.file"),
       items: [
-        { label: "New Window", action: { type: "invoke", payload: "create_new_window" } },
-        { label: "Create Directory...", action: { type: "emit", payload: "menu-create-vault" } },
-        { label: "Open Vault...", action: { type: "emit", payload: "menu-open-vault" } },
-        { label: "Open File...", action: { type: "emit", payload: "menu-open-file" } },
+        { label: t("menu.newWindow"), action: { type: "invoke", payload: "create_new_window" } },
+        { label: t("menu.createDirectory"), action: { type: "emit", payload: "menu-create-vault" } },
+        { label: t("menu.openVault"), action: { type: "emit", payload: "menu-open-vault" } },
+        { label: t("menu.openFile"), action: { type: "emit", payload: "menu-open-file" } },
         {
-          label: "Open Recent",
+          label: t("menu.openRecent"),
           submenu: buildRecentSubmenu(recentList),
         },
         { separator: true },
-        { label: "Close Window", action: { type: "window", payload: "close" } },
+        { label: t("menu.closeWindow"), action: { type: "window", payload: "close" } },
       ],
     },
     {
-      label: "Edit",
+      label: t("menu.edit"),
       items: [
-        { label: "Undo", action: { type: "exec", payload: "undo" } },
-        { label: "Redo", action: { type: "exec", payload: "redo" } },
+        { label: t("menu.undo"), action: { type: "exec", payload: "undo" } },
+        { label: t("menu.redo"), action: { type: "exec", payload: "redo" } },
         { separator: true },
-        { label: "Cut", action: { type: "exec", payload: "cut" } },
-        { label: "Copy", action: { type: "exec", payload: "copy" } },
-        { label: "Paste", action: { type: "exec", payload: "paste" } },
+        { label: t("menu.cut"), action: { type: "exec", payload: "cut" } },
+        { label: t("menu.copy"), action: { type: "exec", payload: "copy" } },
+        { label: t("menu.paste"), action: { type: "exec", payload: "paste" } },
         { separator: true },
-        { label: "Select All", action: { type: "exec", payload: "selectAll" } },
+        { label: t("menu.selectAll"), action: { type: "exec", payload: "selectAll" } },
       ],
     },
     {
-      label: "View",
+      label: t("menu.view"),
       items: [
-        { label: "Toggle Sidebar", action: { type: "emit", payload: "menu-toggle-sidebar" } },
+        { label: t("menu.toggleSidebar"), action: { type: "emit", payload: "menu-toggle-sidebar" } },
         { separator: true },
-        { label: "Zoom In", action: { type: "emit", payload: "menu-zoom-in" } },
-        { label: "Zoom Out", action: { type: "emit", payload: "menu-zoom-out" } },
-        { label: "Actual Size", action: { type: "emit", payload: "menu-zoom-reset" } },
+        { label: t("menu.zoomIn"), action: { type: "emit", payload: "menu-zoom-in" } },
+        { label: t("menu.zoomOut"), action: { type: "emit", payload: "menu-zoom-out" } },
+        { label: t("menu.actualSize"), action: { type: "emit", payload: "menu-zoom-reset" } },
       ],
     },
     {
-      label: "Window",
+      label: t("menu.window"),
       items: [
-        { label: "Minimize", action: { type: "window", payload: "minimize" } },
-        { label: "Zoom", action: { type: "window", payload: "maximize" } },
+        { label: t("menu.minimize"), action: { type: "window", payload: "minimize" } },
+        { label: t("menu.zoom"), action: { type: "window", payload: "maximize" } },
       ],
     },
   ]);
@@ -297,13 +298,13 @@
       {/each}
     </div>
     <div class="right-section">
-      <button class="control-btn" onclick={minimize} title="最小化" aria-label="Minimize">
+      <button class="control-btn" onclick={minimize} title={t("window.minimize")} aria-label={t("window.minimize")}>
         <Minus size={14} />
       </button>
-      <button class="control-btn" onclick={toggleMaximize} title="最大化" aria-label="Maximize">
+      <button class="control-btn" onclick={toggleMaximize} title={t("window.maximize")} aria-label={t("window.maximize")}>
         <Square size={12} />
       </button>
-      <button class="control-btn close" onclick={close} title="关闭" aria-label="Close">
+      <button class="control-btn close" onclick={close} title={t("window.close")} aria-label={t("window.close")}>
         <X size={14} />
       </button>
     </div>

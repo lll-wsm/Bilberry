@@ -6,6 +6,18 @@ import { addToRecent } from "./vaultHistory";
 import { loadSession, saveSession, type SessionData } from "./session";
 import { expandToPaths } from "./expandToPaths";
 import { settingsStore } from "./settings";
+import { t } from "../lib/i18n/i18n.svelte";
+
+/**
+ * Normalize line endings to `\n` so that the store content always matches
+ * CodeMirror's internal representation (which strips `\r`).  Without this,
+ * files with CRLF (`\r\n`) endings cause the Editor's sync `$effect` to
+ * see a perpetual mismatch, triggering repeated full-document replacements
+ * that reset cursor position and scroll — especially noticeable on large files.
+ */
+function normalizeLineEndings(text: string): string {
+  return text.indexOf('\r') >= 0 ? text.replace(/\r\n?/g, '\n') : text;
+}
 
 export interface FileEntry {
   path: string;
@@ -46,6 +58,8 @@ interface VaultState {
   searchReady: boolean;
   loading: boolean;
   isSingleFile: boolean;
+  /** True while a file read is in flight (distinct from `loading`, which is also set by tree refreshes). */
+  fileLoading: boolean;
 }
 
 const initialState: VaultState = {
@@ -60,6 +74,7 @@ const initialState: VaultState = {
   searchReady: false,
   loading: false,
   isSingleFile: false,
+  fileLoading: false,
 };
 
 export function isMarkdownPath(path: string | null | undefined): boolean {
@@ -132,7 +147,7 @@ function createVaultStore() {
       vaultStore.handleFileRename(old_path, path);
     } else if (type === "remove") {
       if (state.currentFilePath === path) {
-        alert(`当前编辑的文件已被外部删除: ${path.split("/").pop()}`);
+        alert(t("alert.fileDeletedExternally", { name: path.split("/").pop() ?? "" }));
         vaultStore.closeCurrentFile();
       }
     } else if (type === "modify") {
@@ -140,7 +155,7 @@ function createVaultStore() {
 
       try {
         const encoding = state.currentEncoding || "UTF-8";
-        const newContent = await invoke<string>("read_note", { path, encoding });
+        const newContent = normalizeLineEndings(await invoke<string>("read_note", { path, encoding }));
 
         if (isSelfSave(path, newContent)) {
           return;
@@ -156,7 +171,7 @@ function createVaultStore() {
           lastSavedContent = newContent;
         } else {
           const confirmReload = confirm(
-            `文件 "${path.split("/").pop()}" 已在外部被修改。\n\n是否重新加载外部版本？这会覆盖您的本地未保存修改。`
+            t("alert.fileModifiedExternally", { name: path.split("/").pop() ?? "" })
           );
           if (confirmReload) {
             update((s) => ({ ...s, currentContent: newContent }));
@@ -306,6 +321,7 @@ function createVaultStore() {
             isSingleFile: true,
             fileTree,
             loading: true,
+            fileLoading: true,
             currentFilePath: path,
             currentEncoding: encoding,
             currentContent: "",
@@ -324,6 +340,7 @@ function createVaultStore() {
           update((s) => ({
             ...s,
             loading: true,
+            fileLoading: true,
             currentFilePath: path,
             currentEncoding: encoding,
             currentContent: "",
@@ -332,23 +349,34 @@ function createVaultStore() {
 
         lastSavedContent = "";
         lastSavedEncoding = encoding;
+        // Sync the editor mode before the read so non-previewable files
+        // (txt, source, etc.) immediately render in the source editor rather
+        // than flashing the markdown preview (whose toolbar is hidden for them).
+        editorStore.syncModeForFile(isPreviewableTextPath(path));
 
-        const content = isImagePath(path)
+        const raw = isImagePath(path)
           ? ""
           : await invoke<string>("read_note", { path, encoding });
+        const content = normalizeLineEndings(raw);
 
         update((s) => ({
           ...s,
           currentContent: content,
           loading: false,
+          fileLoading: false,
         }));
 
-        editorStore.syncModeForFile(isPreviewableTextPath(path));
+        // Restore the last cursor/scroll position for this file, if any.
+        let savedPos: { anchor: number; head: number } | null = null;
+        const posUnsub = subscribe((s) => { savedPos = s.scrollPositions[path] ?? null; });
+        posUnsub();
+        if (savedPos) pendingNavRange.set(savedPos);
+
         lastSavedContent = content;
         lastSavedEncoding = encoding;
       } catch (e) {
-        update((s) => ({ ...s, loading: false }));
-        alert("无法打开文件: " + path + "\n" + e);
+        update((s) => ({ ...s, loading: false, fileLoading: false }));
+        alert(t("alert.cannotOpenFile", { path }) + "\n" + e);
       }
     },
 
@@ -408,6 +436,7 @@ function createVaultStore() {
       update((s) => ({
         ...s,
         loading: true,
+        fileLoading: true,
         currentFilePath: path,
         currentContent: "",
         currentEncoding: encoding,
@@ -418,15 +447,24 @@ function createVaultStore() {
       lastSavedEncoding = encoding;
 
       try {
-        const content = isImagePath(path)
+        const raw = isImagePath(path)
           ? ""
           : await invoke<string>("read_note", { path, encoding });
+        const content = normalizeLineEndings(raw);
 
         update((s) => ({
           ...s,
           currentContent: content,
           loading: false,
+          fileLoading: false,
         }));
+
+        // Restore the last cursor/scroll position for this file, if any,
+        // so re-opening a file doesn't always jump back to the first line.
+        let savedPos: { anchor: number; head: number } | null = null;
+        const posUnsub = subscribe((s) => { savedPos = s.scrollPositions[path] ?? null; });
+        posUnsub();
+        if (savedPos) pendingNavRange.set(savedPos);
 
         editorStore.syncModeForFile(isPreviewableTextPath(path));
         lastSavedContent = content;
@@ -438,10 +476,11 @@ function createVaultStore() {
         update((s) => ({
           ...s,
           loading: false,
+          fileLoading: false,
           currentFilePath: null,
           currentContent: "",
         }));
-        alert("读取笔记失败: " + e);
+        alert(t("alert.readNoteFailed", { error: String(e) }));
       }
     },
 
@@ -500,7 +539,7 @@ function createVaultStore() {
       });
       if (!path) return;
       try {
-        const content = await invoke<string>("read_note", { path, encoding });
+        const content = normalizeLineEndings(await invoke<string>("read_note", { path, encoding }));
         update((s) => ({ ...s, currentContent: content, loading: false }));
         lastSavedContent = content;
         lastSavedEncoding = encoding;
@@ -508,7 +547,7 @@ function createVaultStore() {
       } catch (e) {
         console.error("Failed to read note with encoding:", e);
         update((s) => ({ ...s, loading: false }));
-        alert("使用指定编码读取失败: " + e);
+        alert(t("alert.encodingReadFailed", { error: String(e) }));
       }
     },
 
@@ -603,7 +642,7 @@ function createVaultStore() {
           fileNameResults.push({
             path: file.path,
             title,
-            snippet: "文件名匹配",
+            snippet: t("search.fileNameMatch"),
             score: 100,
             match_start: 0,
             match_end: 0,

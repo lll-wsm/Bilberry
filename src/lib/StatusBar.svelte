@@ -1,18 +1,32 @@
 <script lang="ts">
   import { currentFileIsImage, vaultStore } from "../stores/vault";
   import { editorStore } from "../stores/editor";
+  import { t } from "./i18n/i18n.svelte";
 
-  let wordCount = $derived(
-    $vaultStore.currentContent
-      ? $vaultStore.currentContent.split(/\s+/).filter(Boolean).length
-      : 0,
-  );
-  let charCount = $derived($vaultStore.currentContent.length);
+  // Word/char counts are computed debounced: for large documents splitting the
+  // whole content on every keystroke would add noticeable main-thread work.
+  let wordCount = $state(0);
+  let charCount = $state(0);
+  let countTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const content = $vaultStore.currentContent;
+    if (countTimer) clearTimeout(countTimer);
+    countTimer = setTimeout(() => {
+      wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
+      charCount = content.length;
+    }, 150);
+    return () => {
+      if (countTimer) clearTimeout(countTimer);
+    };
+  });
 
   let modeLabel = $derived(
-    ({ split: "分栏", preview: "预览", source: "源码" } as const)[
-      $editorStore.mode
-    ] ?? "分栏",
+    t(
+      ({ split: "status.split", preview: "status.preview", source: "status.source" } as const)[
+        $editorStore.mode
+      ] ?? "status.split",
+    ),
   );
 
   const encodings = [
@@ -34,15 +48,15 @@
   <div class="statusbar">
     <span class="left"></span>
     <span class="right">
-      <span class="stat">{wordCount} 词</span>
-      <span class="stat">{charCount} 字</span>
+      <span class="stat">{t("status.words", { count: wordCount })}</span>
+      <span class="stat">{t("status.chars", { count: charCount })}</span>
       
       {#if $vaultStore.currentFilePath && !$currentFileIsImage}
         <select 
           class="encoding-select" 
           value={$vaultStore.currentEncoding} 
           onchange={handleEncodingChange}
-          title="重新以该编码加载文件"
+          title={t("status.reloadWithEncoding")}
         >
           {#each encodings as enc}
             <option value={enc.value}>{enc.label}</option>

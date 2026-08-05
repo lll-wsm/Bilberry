@@ -1,12 +1,13 @@
 <script lang="ts">
   import { editorStore, triggerFindCount } from "../../stores/editor";
-  import { currentFileIsImage, currentFileIsMermaid, currentFileSupportsPreview, currentFile } from "../../stores/vault";
+  import { currentFileIsImage, currentFileIsMermaid, currentFileSupportsPreview, currentFile, vaultStore } from "../../stores/vault";
   import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
   import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import Editor from "./Editor.svelte";
   import EditorToolbar from "./EditorToolbar.svelte";
   import ImageViewer from "./ImageViewer.svelte";
   import Preview from "../preview/Preview.svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let { content = "", onContentChange }: {
     content?: string;
@@ -37,15 +38,15 @@
     if ($currentFileIsImage) return;
 
     const items: ContextMenuItem[] = [
-      { label: "剪切", action: () => document.execCommand("cut") },
-      { label: "复制", action: () => document.execCommand("copy") },
-      { label: "删除", action: () => document.execCommand("delete") },
-      { label: "粘贴", action: () => handlePaste() },
+      { label: t("common.cut"), action: () => document.execCommand("cut") },
+      { label: t("common.copy"), action: () => document.execCommand("copy") },
+      { label: t("common.delete"), action: () => document.execCommand("delete") },
+      { label: t("common.paste"), action: () => handlePaste() },
     ];
 
     if ($editorStore.mode !== "preview") {
       items.push({ separator: true, label: "", action: () => {} });
-      items.push({ label: "搜索", action: () => triggerFind() });
+      items.push({ label: t("editor.search"), action: () => triggerFind() });
     }
 
     contextMenu.show(e, items);
@@ -60,7 +61,7 @@
   <div class="workspace" class:split={$editorStore.mode === "split"} oncontextmenu={onWorkspaceContextMenu}>
     {#if $currentFileIsImage}
       <ImageViewer path={$currentFile ?? ""} />
-    {:else if $editorStore.mode === "preview"}
+    {:else if $currentFileSupportsPreview && $editorStore.mode === "preview"}
       <Preview
         source={content}
         mode={$currentFileIsMermaid ? "mermaid" : "markdown"}
@@ -70,7 +71,7 @@
           viewScrollRatio = ratio;
         }}
       />
-    {:else if $editorStore.mode === "split"}
+    {:else if $currentFileSupportsPreview && $editorStore.mode === "split"}
       <div class="pane editor-pane">
         <Editor
           {content}
@@ -100,6 +101,12 @@
       />
     {/if}
   </div>
+
+  {#if $vaultStore.fileLoading}
+    <div class="loading-overlay">
+      <span class="loading-text">{t("editor.loading")}</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -134,5 +141,22 @@
 
   .editor-pane {
     border-right: none;
+  }
+
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+    z-index: 60;
+    /* Visual-only: never blocks input, so the editor is always interactive. */
+    pointer-events: none;
+  }
+
+  .loading-text {
+    font-size: 13px;
+    color: var(--text-muted);
   }
 </style>

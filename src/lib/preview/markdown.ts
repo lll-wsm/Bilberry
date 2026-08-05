@@ -358,19 +358,22 @@ function preprocessMarkdown(src: string): PreprocessResult {
 function renderMath(html: string, blockMaths: string[]): string {
   let result = html;
 
-  for (let i = 0; i < blockMaths.length; i++) {
-    const placeholder = `${BLOCK_MATH_PLACEHOLDER_PREFIX}${i}\x00`;
-    try {
-      const mathHtml = katex.renderToString(blockMaths[i], {
-        displayMode: true,
-        throwOnError: false,
-      });
-      result = result.replace(placeholder, () => mathHtml);
-    } catch {
-      const errHtml = `<span class="katex-error">${blockMaths[i]}</span>`;
-      result = result.replace(placeholder, () => errHtml);
-    }
-  }
+  // Restore extracted $$...$$ blocks (single pass — placeholder order matches
+  // the array, so one regex replace avoids an O(n²) per-block scan).
+  result = result.replace(
+    new RegExp(`${BLOCK_MATH_PLACEHOLDER_PREFIX}(\\d+)\\x00`, "g"),
+    (_match, indexStr: string) => {
+      const i = Number(indexStr);
+      try {
+        return katex.renderToString(blockMaths[i], {
+          displayMode: true,
+          throwOnError: false,
+        });
+      } catch {
+        return `<span class="katex-error">${blockMaths[i]}</span>`;
+      }
+    },
+  );
 
   // Block math $$...$$ (process first so $$ aren't caught by inline rule)
   result = result.replace(/\$\$([\s\S]*?)\$\$/g, (_match, tex: string) => {
@@ -442,12 +445,29 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export function formatMermaidError(error: unknown, source?: string): string {
+export interface MermaidLabels {
+  source: string;
+  syntaxError: string;
+  unknownSyntaxError: string;
+}
+
+/** Default (English) mermaid error labels — used outside the UI (e.g. tests). */
+export const DEFAULT_MERMAID_LABELS: MermaidLabels = {
+  source: "Mermaid source",
+  syntaxError: "Mermaid syntax error",
+  unknownSyntaxError: "Unknown Mermaid syntax error",
+};
+
+export function formatMermaidError(
+  error: unknown,
+  source?: string,
+  labels: MermaidLabels = DEFAULT_MERMAID_LABELS,
+): string {
   const message = error instanceof Error ? error.message : String(error);
   const sourceBlock = source
-    ? `<div class="mermaid-error-source"><strong>Mermaid 源码</strong><pre>${escapeHtml(source)}</pre></div>`
+    ? `<div class="mermaid-error-source"><strong>${labels.source}</strong><pre>${escapeHtml(source)}</pre></div>`
     : "";
-  return `<div class="mermaid-error">${sourceBlock}<strong>Mermaid 语法错误</strong><pre>${escapeHtml(message)}</pre></div>`;
+  return `<div class="mermaid-error">${sourceBlock}<strong>${labels.syntaxError}</strong><pre>${escapeHtml(message)}</pre></div>`;
 }
 
 /**
@@ -457,6 +477,7 @@ export function formatMermaidError(error: unknown, source?: string): string {
 export async function renderMermaidBlocks(
   blocks: string[],
   isDark: boolean,
+  labels: MermaidLabels = DEFAULT_MERMAID_LABELS,
 ): Promise<string[]> {
   const mermaid = await import("mermaid");
   mermaid.default.initialize({
@@ -471,7 +492,7 @@ export async function renderMermaidBlocks(
     try {
       const parseResult = await mermaid.default.parse(blocks[i], { suppressErrors: true });
       if (parseResult === false) {
-        svgs.push(formatMermaidError("未知 Mermaid 语法错误", blocks[i]));
+        svgs.push(formatMermaidError(labels.unknownSyntaxError, blocks[i], labels));
         continue;
       }
       const { svg } = await mermaid.default.render(
@@ -514,23 +535,27 @@ export function renderMarkdown(src: string): RenderResult {
   // Render Hashtags
   const withTags = renderHashtags(withWiki);
 
-  // Restore code blocks
-  let finalHtml = withTags;
-  for (let i = 0; i < codeBlocks.length; i++) {
-    const placeholder = `${placeholderPrefix}${i}\x00`;
-    // Decode double-escaped HTML entities in code blocks to show normal characters (like ', ", &, <, >)
-    const decodedCodeBlock = codeBlocks[i].replace(
-      /&amp;((?:#[0-9]+|#[xX][0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);)/g,
-      '&$1'
-    );
-    finalHtml = finalHtml.replace(placeholder, () => decodedCodeBlock);
-  }
+  // Restore code blocks — single pass over the whole string. The placeholders
+  // appear in order, so one global regex replace replaces every block without
+  // the O(n²) cost of a per-block `String.replace` (which rescans from the
+  // start on a multi-megabyte string — the dominant cost for large files).
+  const finalHtml = withTags.replace(
+    new RegExp(`${placeholderPrefix}(\\d+)\\x00`, "g"),
+    (_match, indexStr: string) => {
+      // Decode double-escaped HTML entities in code blocks to show normal characters (like ', ", &, <, >)
+      const decodedCodeBlock = codeBlocks[Number(indexStr)].replace(
+        /&amp;((?:#[0-9]+|#[xX][0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);)/g,
+        '&$1'
+      );
+      return decodedCodeBlock;
+    },
+  );
 
   // Restore escaped dollar signs
-  finalHtml = finalHtml.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), () => "$");
+  const restoredHtml = finalHtml.replace(new RegExp(DOLLAR_PLACEHOLDER, "g"), () => "$");
 
   return {
-    html: finalHtml,
+    html: restoredHtml,
     mermaidBlocks,
   };
 }

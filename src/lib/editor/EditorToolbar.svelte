@@ -2,12 +2,13 @@
   import { editorStore, type EditorMode } from "../../stores/editor";
   import ExportModal from "../export/ExportModal.svelte";
   import { PanelRight } from "lucide-svelte";
+  import { t } from "../i18n/i18n.svelte";
 
-  const modes: { value: EditorMode; label: string; icon: string }[] = [
-    { value: "source", label: "源码", icon: "📝" },
-    { value: "split", label: "分栏", icon: "📄" },
-    { value: "preview", label: "预览", icon: "👁️" },
-  ];
+  const modes = $derived<{ value: EditorMode; label: string; icon: string }[]>([
+    { value: "source", label: t("editor.source"), icon: "📝" },
+    { value: "split", label: t("editor.split"), icon: "📄" },
+    { value: "preview", label: t("editor.preview"), icon: "👁️" },
+  ]);
 
   let showExport = $state(false);
   let expanded = $state(true);
@@ -27,20 +28,20 @@
         </button>
       {/each}
       <div class="separator"></div>
-      <button class="tool-btn" onclick={() => (showExport = true)} title="导出">
+      <button class="tool-btn" onclick={() => (showExport = true)} title={t("editor.export")}>
         <span class="btn-icon">📤</span>
       </button>
       <div class="separator"></div>
       <button
         class="tool-btn collapse-btn"
         onclick={() => (expanded = false)}
-        title="收起"
+        title={t("editor.collapse")}
       >
         <PanelRight size={16} />
       </button>
     </div>
   {:else}
-    <button class="expand-btn" onclick={() => (expanded = true)} title="展开工具栏">
+    <button class="expand-btn" onclick={() => (expanded = true)} title={t("editor.expandToolbar")}>
       <PanelRight size={16} />
     </button>
   {/if}

@@ -2,6 +2,7 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
   import { vaultStore } from "../../stores/vault";
+  import { t } from "../i18n/i18n.svelte";
 
   let { show = false, onclose }: { show?: boolean; onclose?: () => void } = $props();
 
@@ -24,7 +25,7 @@
       await invoke("write_note", { path, content: html });
       onclose?.();
     } catch (e) {
-      alert("导出失败: " + e);
+      alert(t("alert.exportFailed", { error: String(e) }));
     }
   }
 
@@ -40,20 +41,20 @@
   <div class="overlay" onclick={onclose} onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
-      <h2>导出</h2>
+      <h2>{t("export.title")}</h2>
       <div class="options">
         <button class="option-btn" onclick={exportAsHtml}>
           <span class="icon">🌐</span>
-          <span class="label">导出 HTML</span>
-          <span class="desc">生成独立的 HTML 文件</span>
+          <span class="label">{t("export.html")}</span>
+          <span class="desc">{t("export.htmlDesc")}</span>
         </button>
         <button class="option-btn" onclick={exportAsPdf}>
           <span class="icon">📕</span>
-          <span class="label">导出 PDF</span>
-          <span class="desc">通过浏览器打印生成 PDF</span>
+          <span class="label">{t("export.pdf")}</span>
+          <span class="desc">{t("export.pdfDesc")}</span>
         </button>
       </div>
-      <button class="cancel-btn" onclick={onclose}>取消</button>
+      <button class="cancel-btn" onclick={onclose}>{t("common.cancel")}</button>
     </div>
   </div>
 {/if}

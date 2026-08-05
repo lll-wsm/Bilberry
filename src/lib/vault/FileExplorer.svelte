@@ -9,6 +9,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import FileExplorer from "./FileExplorer.svelte";
   import { ChevronRight, ChevronDown, Folder, File, FileText } from "lucide-svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   const editingPath = writable<string | null>(null);
 
@@ -104,7 +105,7 @@
           vaultStore.closeCurrentFile();
         }
       } catch (e) {
-        alert("重命名失败: " + e);
+        alert(t("alert.renameFailed", { error: String(e) }));
       }
     }
   }
@@ -115,7 +116,7 @@
   }
 
   async function handleDelete(path: string, isDir: boolean) {
-    if (!confirm(`确定删除${isDir ? "目录" : "文件"} "${path.split("/").pop()}" 吗？`)) return;
+    if (!confirm(t("common.confirmDeleteKind", { kind: t(isDir ? "kind.directory" : "kind.file"), name: path.split("/").pop() ?? "" }))) return;
     try {
       if (isDir) {
         await invoke("delete_directory", { path });
@@ -127,7 +128,7 @@
         vaultStore.closeCurrentFile();
       }
     } catch (e) {
-      alert("删除失败: " + e);
+      alert(t("alert.deleteFailed", { error: String(e) }));
     }
   }
 
@@ -174,7 +175,7 @@
       localPending = null;
       pendingValue = "";
     } catch (e) {
-      alert(`${pending.type === "file" ? "新建文件" : "新建目录"}失败: ${e}`);
+      alert(t("alert.createFailed", { kind: t(pending.type === "file" ? "kind.file" : "kind.directory"), error: String(e) }));
       isCommitting = false;
     }
   }
@@ -236,7 +237,7 @@
       fileClipboard.clear();
       await vaultStore.refreshFileTree();
     } catch (e) {
-      alert("粘贴失败: " + e);
+      alert(t("alert.pasteFailed", { error: String(e) }));
     }
   }
 
@@ -246,17 +247,17 @@
 
   function onFileContextMenu(e: MouseEvent, entry: FileEntry) {
     contextMenu.show(e, [
-      { label: "刷新", action: () => refreshFileTree() },
+      { label: t("common.refresh"), action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
-      { label: "在访达中打开", action: () => revealInFinder(entry.path) },
+      { label: t("common.revealInFinder"), action: () => revealInFinder(entry.path) },
       { separator: true, label: "", action: () => {} },
-      { label: "剪切", action: () => fileClipboard.cut(entry.path) },
-      { label: "复制", action: () => fileClipboard.copy(entry.path) },
-      { label: "删除", action: () => handleDelete(entry.path, entry.is_dir) },
-      { label: "重命名", action: () => startRename(entry.path) },
+      { label: t("common.cut"), action: () => fileClipboard.cut(entry.path) },
+      { label: t("common.copy"), action: () => fileClipboard.copy(entry.path) },
+      { label: t("common.delete"), action: () => handleDelete(entry.path, entry.is_dir) },
+      { label: t("common.rename"), action: () => startRename(entry.path) },
       { separator: true, label: "", action: () => {} },
-      { label: "复制相对路径", action: () => copyRelativePath(entry.path) },
-      { label: "复制绝对路径", action: () => copyAbsolutePath(entry.path) },
+      { label: t("common.copyRelativePath"), action: () => copyRelativePath(entry.path) },
+      { label: t("common.copyAbsolutePath"), action: () => copyAbsolutePath(entry.path) },
     ]);
   }
 
@@ -264,34 +265,34 @@
     const clipEntry = get(fileClipboard);
 
     const items: ContextMenuItem[] = [
-      { label: "刷新", action: () => refreshFileTree() },
+      { label: t("common.refresh"), action: () => refreshFileTree() },
       { separator: true, label: "", action: () => {} },
-      { label: "新建文件", action: () => startNewFile(entry.path) },
-      { label: "新建目录", action: () => startNewDirectory(entry.path) },
+      { label: t("common.newFile"), action: () => startNewFile(entry.path) },
+      { label: t("common.newDirectory"), action: () => startNewDirectory(entry.path) },
       { separator: true, label: "", action: () => {} },
-      { label: "在访达中打开", action: () => revealInFinder(entry.path) },
+      { label: t("common.revealInFinder"), action: () => revealInFinder(entry.path) },
       { separator: true, label: "", action: () => {} },
     ];
 
     if (!isRootItem) {
       items.push(
-        { label: "剪切", action: () => fileClipboard.cut(entry.path) },
-        { label: "复制", action: () => fileClipboard.copy(entry.path) },
-        { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
-        { label: "删除", action: () => handleDelete(entry.path, true) },
-        { label: "重命名", action: () => startRename(entry.path) },
+        { label: t("common.cut"), action: () => fileClipboard.cut(entry.path) },
+        { label: t("common.copy"), action: () => fileClipboard.copy(entry.path) },
+        { label: t("common.paste"), disabled: !clipEntry, action: () => handlePaste(entry.path) },
+        { label: t("common.delete"), action: () => handleDelete(entry.path, true) },
+        { label: t("common.rename"), action: () => startRename(entry.path) },
       );
     } else {
       // For root, only allow paste
       items.push(
-        { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(entry.path) },
+        { label: t("common.paste"), disabled: !clipEntry, action: () => handlePaste(entry.path) },
       );
     }
 
     items.push(
       { separator: true, label: "", action: () => {} },
-      { label: "复制相对路径", action: () => copyRelativePath(entry.path) },
-      { label: "复制绝对路径", action: () => copyAbsolutePath(entry.path) },
+      { label: t("common.copyRelativePath"), action: () => copyRelativePath(entry.path) },
+      { label: t("common.copyAbsolutePath"), action: () => copyAbsolutePath(entry.path) },
     );
 
     contextMenu.show(e, items);
@@ -377,7 +378,7 @@
             <input
               class="pending-input"
               bind:value={pendingValue}
-              placeholder={localPending.type === "file" ? "文件名.md" : "目录名"}
+              placeholder={localPending.type === "file" ? t("common.fileNamePlaceholder") : t("common.directoryNamePlaceholder")}
               use:focusPendingInput
               onkeydown={(e) => {
                 if (e.key === "Enter") {

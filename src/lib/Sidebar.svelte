@@ -9,7 +9,16 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import FileExplorer from "./vault/FileExplorer.svelte";
   import SearchPanel from "./vault/SearchPanel.svelte";
-  import { FolderOpen, Search } from "lucide-svelte";
+  import { FolderOpen, FolderPlus, Search } from "lucide-svelte";
+  import { t } from "./i18n/i18n.svelte";
+
+  let {
+    onOpenVault = () => {},
+    onCreateVault = () => {},
+  }: {
+    onOpenVault?: () => void;
+    onCreateVault?: () => void;
+  } = $props();
 
   type Tab = "files" | "search";
   let activeTab: Tab = $state("files");
@@ -59,7 +68,7 @@
       await invoke("rename_note", { oldPath: vaultPath, newPath });
       await vaultStore.refreshFileTree();
     } catch (e) {
-      alert("重命名失败: " + e);
+      alert(t("alert.renameFailed", { error: String(e) }));
     }
   }
 
@@ -69,12 +78,12 @@
   }
 
   async function handleDelete(path: string) {
-    if (!confirm(`确定删除 "${path.split("/").pop()}" 吗？`)) return;
+    if (!confirm(t("common.confirmDelete", { name: path.split("/").pop() ?? "" }))) return;
     try {
       await invoke("delete_directory", { path });
       await vaultStore.refreshFileTree();
     } catch (e) {
-      alert("删除失败: " + e);
+      alert(t("alert.deleteFailed", { error: String(e) }));
     }
   }
 
@@ -92,7 +101,7 @@
       fileClipboard.clear();
       await vaultStore.refreshFileTree();
     } catch (e) {
-      alert("粘贴失败: " + e);
+      alert(t("alert.pasteFailed", { error: String(e) }));
     }
   }
 
@@ -101,21 +110,21 @@
     const clipEntry = get(fileClipboard);
 
     contextMenu.show(e, [
-      { label: "刷新", action: () => vaultStore.refreshFileTree() },
+      { label: t("common.refresh"), action: () => vaultStore.refreshFileTree() },
       { separator: true, label: "", action: () => {} },
-      { label: "新建文件", action: () => handleNewFile() },
-      { label: "新建目录", action: () => handleNewDirectory() },
+      { label: t("common.newFile"), action: () => handleNewFile() },
+      { label: t("common.newDirectory"), action: () => handleNewDirectory() },
       { separator: true, label: "", action: () => {} },
-      { label: "在访达中打开", action: () => revealInFinder(vaultPath) },
+      { label: t("common.revealInFinder"), action: () => revealInFinder(vaultPath) },
       { separator: true, label: "", action: () => {} },
-      { label: "剪切", action: () => fileClipboard.cut(vaultPath) },
-      { label: "复制", action: () => fileClipboard.copy(vaultPath) },
-      { label: "粘贴", disabled: !clipEntry, action: () => handlePaste(vaultPath) },
-      { label: "重命名", action: () => { contextMenu.hide(); startRootRename(); } },
-      { label: "删除", action: () => handleDelete(vaultPath) },
+      { label: t("common.cut"), action: () => fileClipboard.cut(vaultPath) },
+      { label: t("common.copy"), action: () => fileClipboard.copy(vaultPath) },
+      { label: t("common.paste"), disabled: !clipEntry, action: () => handlePaste(vaultPath) },
+      { label: t("common.rename"), action: () => { contextMenu.hide(); startRootRename(); } },
+      { label: t("common.delete"), action: () => handleDelete(vaultPath) },
       { separator: true, label: "", action: () => {} },
-      { label: "复制相对路径", action: () => copyRelativePath(vaultPath) },
-      { label: "复制绝对路径", action: () => copyAbsolutePath(vaultPath) },
+      { label: t("common.copyRelativePath"), action: () => copyRelativePath(vaultPath) },
+      { label: t("common.copyAbsolutePath"), action: () => copyAbsolutePath(vaultPath) },
     ]);
   }
 
@@ -143,29 +152,29 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="sidebar" style="width: {$settingsStore.sidebarWidth}px">
-  <div class="sidebar-header">
-    <div class="tabs">
-      <button
-        class="tab"
-        class:active={activeTab === "files"}
-        onclick={() => (activeTab = "files")}
-        title="文件"
-      ><FolderOpen size={16} /></button>
-      <button
-        class="tab"
-        class:active={activeTab === "search"}
-        onclick={() => (activeTab = "search")}
-        title="搜索"
-      ><Search size={16} /></button>
+  {#if $vaultStore.vault}
+    <div class="sidebar-header">
+      <div class="tabs">
+        <button
+          class="tab"
+          class:active={activeTab === "files"}
+          onclick={() => (activeTab = "files")}
+          title={t("sidebar.files")}
+        ><FolderOpen size={16} /></button>
+        <button
+          class="tab"
+          class:active={activeTab === "search"}
+          onclick={() => (activeTab = "search")}
+          title={t("sidebar.search")}
+        ><Search size={16} /></button>
+      </div>
     </div>
-  </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="sidebar-content"
-    class:hidden-files={activeTab !== "files"}
-    oncontextmenu={onEmptyContextMenu}
-  >
-    {#if $vaultStore.vault}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="sidebar-content"
+      class:hidden-files={activeTab !== "files"}
+      oncontextmenu={onEmptyContextMenu}
+    >
       <FileExplorer
         entries={[{
           name: $vaultStore.vault.name,
@@ -175,15 +184,26 @@
         }]}
         isRoot={true}
       />
-    {/if}
-  </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="sidebar-content"
-    class:hidden-search={activeTab !== "search"}
-  >
-    <SearchPanel />
-  </div>
+    </div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="sidebar-content"
+      class:hidden-search={activeTab !== "search"}
+    >
+      <SearchPanel />
+    </div>
+  {:else}
+    <div class="sidebar-empty">
+      <button class="empty-btn primary" onclick={onOpenVault}>
+        <FolderOpen size={16} />
+        <span>{t("sidebar.openDirectory")}</span>
+      </button>
+      <button class="empty-btn" onclick={onCreateVault}>
+        <FolderPlus size={16} />
+        <span>{t("sidebar.createDirectory")}</span>
+      </button>
+    </div>
+  {/if}
   <div
     class="resize-handle"
     onmousedown={startResize}
@@ -267,6 +287,45 @@
     overflow-x: hidden;
   }
 
+  .sidebar-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .empty-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-divider);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-normal);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .empty-btn:hover {
+    background: var(--bg-hover);
+  }
+
+  .empty-btn.primary {
+    background: var(--interactive-accent);
+    color: white;
+    border-color: var(--interactive-accent);
+  }
+
+  .empty-btn.primary:hover {
+    opacity: 0.9;
+  }
+
   .hidden-files,
   .hidden-search {
     display: none;
@@ -280,11 +339,5 @@
     height: 100%;
     cursor: col-resize;
     z-index: 10;
-    transition: background-color 0.2s;
-  }
-
-  .resize-handle:hover,
-  .resize-handle:active {
-    background-color: var(--interactive-accent);
   }
 </style>

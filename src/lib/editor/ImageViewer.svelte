@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { t } from "../i18n/i18n.svelte";
 
   let { path = "" }: { path?: string } = $props();
 
@@ -55,9 +56,9 @@
   {#if src}
     <img class="image" {src} alt={path.split("/").pop() ?? "image"} draggable="false" />
   {:else if loadError}
-    <div class="empty">无法加载图片: {loadError}</div>
+    <div class="empty">{t("image.loadFailed", { error: loadError })}</div>
   {:else}
-    <div class="empty">正在加载图片...</div>
+    <div class="empty">{t("image.loading")}</div>
   {/if}
 </div>
 

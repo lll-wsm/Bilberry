@@ -3,6 +3,8 @@ import { loadDataFile, saveDataFile } from "./persistence";
 
 const FILE_NAME = "settings.json";
 
+export type Language = "system" | "zh" | "en";
+
 export interface Settings {
   fontSize: number;
   fontFamily: string;
@@ -13,6 +15,7 @@ export interface Settings {
   previewTheme: string;
   theme: "light" | "dark" | "system";
   showHiddenFiles: boolean;
+  language: Language;
 }
 
 const defaultSettings: Settings = {
@@ -25,6 +28,7 @@ const defaultSettings: Settings = {
   previewTheme: "system",
   theme: "system",
   showHiddenFiles: true,
+  language: "system",
 };
 
 function createSettingsStore() {

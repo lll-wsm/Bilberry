@@ -3,6 +3,7 @@
   import { editorStore, pendingNavRange } from "../../stores/editor";
   import { tick } from "svelte";
   import { Search, Loader2 } from "lucide-svelte";
+  import { t } from "../i18n/i18n.svelte";
 
   let query = $state("");
   let searching = $state(false);
@@ -61,7 +62,7 @@
     <span class="search-icon"><Search size={14} /></span>
     <input
       type="text"
-      placeholder="搜索文件名或内容..."
+      placeholder={t("search.placeholder")}
       bind:value={query}
       oninput={onInput}
       onkeydown={handleKeydown}
@@ -73,14 +74,14 @@
 
   <div class="results">
     {#if !searchReady && query}
-      <p class="status">正在构建搜索索引...</p>
+      <p class="status">{t("search.buildingIndex")}</p>
     {:else if $vaultStore.searchResults.length > 0}
       {#each $vaultStore.searchResults as result}
         <button class="result-item" onclick={() => openResult(result)}>
           <span class="title">
             {result.title}
             {#if result.score === 100}
-              <span class="badge">文件名</span>
+              <span class="badge">{t("search.fileName")}</span>
             {/if}
           </span>
           <span class="snippet">{@html highlightSnippet(result.snippet, query)}</span>
@@ -88,7 +89,7 @@
         </button>
       {/each}
     {:else if query && !searching}
-      <p class="empty">无匹配结果</p>
+      <p class="empty">{t("search.noResults")}</p>
     {/if}
   </div>
 </div>

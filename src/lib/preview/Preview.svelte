@@ -9,6 +9,7 @@
   import LinkPreview from "../ui/LinkPreview.svelte";
   import { ChevronUp, ChevronDown, X, CaseSensitive } from "lucide-svelte";
   import { triggerPreviewFindCount } from "../../stores/editor";
+  import { t } from "../i18n/i18n.svelte";
 
   let { source = "", mode = "markdown", currentFilePath = null, scrollSyncRatio = null, onScrollChange, embedded = false }: {
     source?: string;
@@ -274,14 +275,31 @@
     }
   }
 
+  // Render markdown asynchronously and debounced. Rendering a large document
+  // takes hundreds of milliseconds, so doing it synchronously on every
+  // keystroke would freeze the UI. The first render is scheduled with no delay
+  // (still async, so the editor paints first); later edits are batched.
+  const PREVIEW_RENDER_DEBOUNCE_MS = 200;
+  let renderTimer: ReturnType<typeof setTimeout> | null = null;
+  let firstRenderPending = true;
+
   $effect(() => {
-    try {
-      result = mode === "mermaid" ? renderMermaidDocument(source) : renderMarkdown(source);
-      renderError = null;
-    } catch (e: any) {
-      console.error("Markdown render error:", e);
-      renderError = e.message || String(e);
-    }
+    const src = source;
+    const mdMode = mode;
+    if (renderTimer) clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+      firstRenderPending = false;
+      try {
+        result = mdMode === "mermaid" ? renderMermaidDocument(src) : renderMarkdown(src);
+        renderError = null;
+      } catch (e: any) {
+        console.error("Markdown render error:", e);
+        renderError = e.message || String(e);
+      }
+    }, firstRenderPending ? 0 : PREVIEW_RENDER_DEBOUNCE_MS);
+    return () => {
+      if (renderTimer) clearTimeout(renderTimer);
+    };
   });
 
   // Render mermaid diagrams after HTML is in the DOM
@@ -290,12 +308,17 @@
     const previewThemeId = $settingsStore.previewTheme;
     const previewTheme = themes.find((entry) => entry.id === previewThemeId);
     const dark = previewTheme ? previewTheme.mode === "dark" : $theme === "dark";
+    const mermaidLabels = {
+      source: t("mermaid.source"),
+      syntaxError: t("mermaid.syntaxError"),
+      unknownSyntaxError: t("mermaid.unknownSyntaxError"),
+    };
 
     let cancelled = false;
     (async () => {
       await tick();
       try {
-        const svgs = await renderMermaidBlocks(result.mermaidBlocks, dark);
+        const svgs = await renderMermaidBlocks(result.mermaidBlocks, dark, mermaidLabels);
         if (cancelled) return;
         const containers = container?.querySelectorAll(".mermaid-container");
         containers?.forEach((el, i) => {
@@ -336,7 +359,7 @@
           img.dataset.localResolved = "true";
         } catch (error) {
           console.error("Failed to resolve markdown image:", resolvedPath, error);
-          img.alt = `${img.alt || rawSrc} (加载失败)`;
+          img.alt = `${img.alt || rawSrc} ${t("preview.imageLoadFailed")}`;
         }
       }));
     })();
@@ -581,7 +604,7 @@
         <input
           bind:this={findInputEl}
           type="text"
-          placeholder="查找..."
+          placeholder={t("preview.findPlaceholder")}
           value={inputValue}
           oninput={handleInput}
           oncompositionstart={handleCompositionStart}
@@ -592,7 +615,7 @@
           class="toggle-btn" 
           class:active={findCaseSensitive} 
           onclick={() => findCaseSensitive = !findCaseSensitive}
-          title="区分大小写"
+          title={t("preview.matchCase")}
         >
           <CaseSensitive size={16} />
         </button>
@@ -603,14 +626,14 @@
           {#if findMatches.length > 0}
             {findCurrentIndex + 1} / {findMatches.length}
           {:else}
-            无结果
+            {t("preview.noResults")}
           {/if}
         </span>
         <button 
           class="action-btn" 
           onclick={prevMatch} 
           disabled={findMatches.length === 0}
-          title="上一个 (Shift+Enter)"
+          title={t("preview.previous")}
         >
           <ChevronUp size={16} />
         </button>
@@ -618,14 +641,14 @@
           class="action-btn" 
           onclick={nextMatch} 
           disabled={findMatches.length === 0}
-          title="下一个 (Enter)"
+          title={t("preview.next")}
         >
           <ChevronDown size={16} />
         </button>
         <button 
           class="action-btn close-btn" 
           onclick={closeFindWidget}
-          title="关闭 (Esc)"
+          title={t("preview.close")}
         >
           <X size={16} />
         </button>
@@ -645,7 +668,7 @@
   >
     {#if renderError}
       <div class="render-error">
-        <strong>渲染错误:</strong> {renderError}
+        <strong>{t("preview.renderError")}</strong> {renderError}
       </div>
     {:else if html}
       <div
@@ -654,9 +677,13 @@
         style:line-height={$settingsStore.lineHeight}
         style:font-family={$settingsStore.fontFamily}
       >{@html html}</div>
+    {:else if source.trim()}
+      <div class="empty">
+        <p>{t("preview.rendering")}</p>
+      </div>
     {:else}
       <div class="empty">
-        <p>暂无内容</p>
+        <p>{t("empty.noContent")}</p>
       </div>
     {/if}
 
