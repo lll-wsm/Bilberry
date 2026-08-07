@@ -6,7 +6,7 @@
   import { loadHistory, addToHistory, removeFromHistory, addToRecent } from "../stores/vaultHistory";
   import { themeManager } from "./themes/theme-manager";
   import { previewThemes } from "./themes/preview-themes";
-  import { editorStore, triggerFindCount, triggerPreviewFindCount } from "../stores/editor";
+  import { editorStore, triggerFindCount } from "../stores/editor";
 
   import Sidebar from "./Sidebar.svelte";
   import EditorPanel from "./editor/EditorPanel.svelte";
@@ -395,12 +395,7 @@
 
   function handleTriggerFind() {
     if (!$vaultStore.currentFilePath) return;
-
-    if ($editorStore.mode === "preview") {
-      triggerPreviewFindCount.update(n => n + 1);
-    } else {
-      triggerFindCount.update(n => n + 1);
-    }
+    triggerFindCount.update(n => n + 1);
   }
 
   function onContentChange(text: string) {

@@ -1,13 +1,21 @@
 import { writable, derived } from "svelte/store";
+import type { EditorView } from "@codemirror/view";
 
 /// Position range in the current document to select (anchor → head)
 export const pendingNavRange = writable<{anchor: number; head: number} | null>(null);
 
-/// Increment to trigger CodeMirror's find panel in the active editor
+/// Increment to trigger the unified find widget
 export const triggerFindCount = writable(0);
 
-/// Increment to trigger preview search panel
-export const triggerPreviewFindCount = writable(0);
+/// Holds the active CodeMirror EditorView instance (set by Editor.svelte on mount)
+export const editorViewStore = writable<EditorView | null>(null);
+
+/// Holds the preview's `.markdown-body` container element (set by Preview.svelte)
+export const previewContainerStore = writable<HTMLElement | null>(null);
+
+/// Increments each time the preview re-renders its HTML, so the FindWidget
+/// can re-run its DOM search without receiving the HTML as a prop.
+export const previewRenderVersion = writable(0);
 
 export type EditorMode = "split" | "preview" | "source";
 

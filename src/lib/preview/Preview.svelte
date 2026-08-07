@@ -8,7 +8,7 @@
   import { previewThemes } from "../themes/preview-themes";
   import LinkPreview from "../ui/LinkPreview.svelte";
   import { useLinkPreview } from "../ui/useLinkPreview.svelte";
-  import PreviewFind from "./PreviewFind.svelte";
+  import { previewContainerStore, previewRenderVersion } from "../../stores/editor";
   import { findFile } from "../vault/findFile";
   import { t } from "../i18n/i18n.svelte";
 
@@ -173,6 +173,17 @@
 
   let html = $derived(result?.html ?? "");
 
+  // Expose the preview container and notify on re-render so the FindWidget
+  // can search the rendered DOM without receiving props.
+  $effect(() => {
+    previewContainerStore.set(container ?? null);
+    return () => previewContainerStore.set(null);
+  });
+  $effect(() => {
+    html;
+    previewRenderVersion.update(n => n + 1);
+  });
+
   const preview = useLinkPreview(() => currentFilePath);
 
   function handleHover(e: MouseEvent) {
@@ -211,6 +222,7 @@
 
   $effect(() => {
     if (!container || scrollSyncRatio === null) return;
+    html; // re-run after content is rendered (e.g., mode switch to preview)
 
     const maxScroll = container.scrollHeight - container.clientHeight;
     const nextTop = maxScroll > 0 ? maxScroll * scrollSyncRatio : 0;
@@ -290,8 +302,6 @@
 </script>
 
 <div class="preview-wrapper" class:embedded>
-  <PreviewFind {container} {html} {embedded} />
-
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div 
     bind:this={container} 

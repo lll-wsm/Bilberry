@@ -22,7 +22,7 @@ import {
   bracketMatching,
   foldKeymap,
 } from "@codemirror/language";
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { highlightSelectionMatches } from "@codemirror/search";
 import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 
 /**
@@ -80,7 +80,6 @@ export function createBasicSetup(): Extension {
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
-      ...searchKeymap,
       ...historyKeymap,
       ...foldKeymap,
       ...completionKeymap,

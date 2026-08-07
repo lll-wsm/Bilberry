@@ -7,6 +7,7 @@
   import EditorToolbar from "./EditorToolbar.svelte";
   import ImageViewer from "./ImageViewer.svelte";
   import Preview from "../preview/Preview.svelte";
+  import FindWidget from "./FindWidget.svelte";
   import { t } from "../i18n/i18n.svelte";
 
   let { content = "", onContentChange }: {
@@ -42,12 +43,9 @@
       { label: t("common.copy"), action: () => document.execCommand("copy") },
       { label: t("common.delete"), action: () => document.execCommand("delete") },
       { label: t("common.paste"), action: () => handlePaste() },
+      { separator: true, label: "", action: () => {} },
+      { label: t("editor.search"), action: () => triggerFind() },
     ];
-
-    if ($editorStore.mode !== "preview") {
-      items.push({ separator: true, label: "", action: () => {} });
-      items.push({ label: t("editor.search"), action: () => triggerFind() });
-    }
 
     contextMenu.show(e, items);
   }
@@ -101,6 +99,8 @@
       />
     {/if}
   </div>
+
+  <FindWidget />
 
   {#if $vaultStore.fileLoading}
     <div class="loading-overlay">

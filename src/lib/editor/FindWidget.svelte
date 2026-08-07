@@ -1,23 +1,30 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import { ChevronUp, ChevronDown, X, CaseSensitive } from "lucide-svelte";
-  import { triggerPreviewFindCount } from "../../stores/editor";
+  import { SearchCursor } from "@codemirror/search";
+  import { EditorView } from "@codemirror/view";
+  import {
+    triggerFindCount,
+    editorViewStore,
+    previewContainerStore,
+    previewRenderVersion,
+    editorMode,
+  } from "../../stores/editor";
+  import { vaultStore } from "../../stores/vault";
+  import { setSearchMatches, type SearchMatch } from "./search-extension";
   import { t } from "../i18n/i18n.svelte";
 
-  let { container, html, embedded = false }: {
-    container: HTMLDivElement | undefined;
-    html: string;
-    embedded?: boolean;
-  } = $props();
-
+  // --- Widget state ---
   let findQuery = $state("");
   let inputValue = $state("");
   let findWidgetVisible = $state(false);
-  let findMatches = $state<HTMLElement[]>([]);
+  let findMatches = $state<HTMLElement[] | SearchMatch[]>([]);
   let findCurrentIndex = $state(-1);
   let findCaseSensitive = $state(false);
   let findInputEl: HTMLInputElement | null = $state(null);
   let isComposing = false;
+
+  // --- Backend helpers ---
 
   function highlightMatches(targetContainer: HTMLElement, query: string, caseSensitive: boolean): HTMLElement[] {
     const matches: HTMLElement[] = [];
@@ -31,7 +38,7 @@
           el.tagName === "SCRIPT" ||
           el.tagName === "STYLE" ||
           el.tagName === "NOSCRIPT" ||
-          el.classList.contains("preview-find-widget") ||
+          el.classList.contains("find-widget") ||
           el.classList.contains("mermaid-container") ||
           el.classList.contains("link-preview-popover")
         ) {
@@ -88,7 +95,7 @@
     return matches;
   }
 
-  function unhighlightMatches() {
+  function unhighlightMatches(container: HTMLElement | null) {
     if (!container) return;
     const marks = container.querySelectorAll("mark.preview-find-match");
     marks.forEach(mark => {
@@ -105,38 +112,98 @@
   }
 
   function highlightCurrentMatch(scroll = true) {
-    findMatches.forEach((match, idx) => {
-      if (idx === findCurrentIndex) {
-        match.classList.add("preview-find-match-current");
-        if (scroll) {
-          match.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (findMatches.length === 0 || findCurrentIndex < 0) return;
+    const match = findMatches[findCurrentIndex];
+
+    // Preview backend: HTMLElement marks
+    if (match instanceof HTMLElement) {
+      findMatches.forEach((m, idx) => {
+        if (m instanceof HTMLElement) {
+          if (idx === findCurrentIndex) {
+            m.classList.add("preview-find-match-current");
+            if (scroll) m.scrollIntoView({ behavior: "smooth", block: "center" });
+          } else {
+            m.classList.remove("preview-find-match-current");
+          }
         }
-      } else {
-        match.classList.remove("preview-find-match-current");
-      }
+      });
+    }
+    // Source backend: CodeMirror decorations are updated via setSearchMatches effect
+  }
+
+  function searchInEditor(view: EditorView, query: string, caseSensitive: boolean): SearchMatch[] {
+    if (!query.trim()) return [];
+    const matches: SearchMatch[] = [];
+    const normalize = caseSensitive ? undefined : (s: string) => s.toLowerCase();
+    const cursor = new SearchCursor(view.state.doc, query, 0, undefined, normalize);
+    for (const match of cursor) {
+      matches.push({ from: match.from, to: match.to });
+    }
+    return matches;
+  }
+
+  function clearEditorDecorations(view: EditorView | null) {
+    if (!view) return;
+    view.dispatch({
+      effects: setSearchMatches.of({ matches: [], currentIndex: -1 }),
     });
   }
+
+  function scrollToEditorMatch(view: EditorView, match: SearchMatch) {
+    view.dispatch({
+      effects: EditorView.scrollIntoView(match.from, { y: "center" }),
+    });
+  }
+
+  // --- Navigation ---
 
   function nextMatch() {
     if (findMatches.length === 0) return;
     findCurrentIndex = (findCurrentIndex + 1) % findMatches.length;
-    highlightCurrentMatch(true);
+    navigateToCurrent();
   }
 
   function prevMatch() {
     if (findMatches.length === 0) return;
     findCurrentIndex = (findCurrentIndex - 1 + findMatches.length) % findMatches.length;
-    highlightCurrentMatch(true);
+    navigateToCurrent();
   }
+
+  function navigateToCurrent() {
+    if (findMatches.length === 0 || findCurrentIndex < 0) return;
+    const match = findMatches[findCurrentIndex];
+
+    if (match instanceof HTMLElement) {
+      // Preview backend
+      highlightCurrentMatch(true);
+    } else {
+      // Source backend: update decorations and scroll
+      const view = $editorViewStore;
+      if (view) {
+        view.dispatch({
+          effects: setSearchMatches.of({
+            matches: findMatches as SearchMatch[],
+            currentIndex: findCurrentIndex,
+          }),
+        });
+        scrollToEditorMatch(view, match);
+      }
+    }
+  }
+
+  // --- Close ---
 
   function closeFindWidget() {
     findWidgetVisible = false;
     findQuery = "";
     inputValue = "";
-    unhighlightMatches();
+    unhighlightMatches($previewContainerStore);
+    clearEditorDecorations($editorViewStore);
     findMatches = [];
     findCurrentIndex = -1;
   }
+
+  // --- Input handling ---
 
   function handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -171,8 +238,11 @@
     }
   }
 
+  // --- Effects ---
+
+  // Show widget when triggered
   $effect(() => {
-    const tickCount = $triggerPreviewFindCount;
+    const tickCount = $triggerFindCount;
     if (tickCount > 0) {
       findWidgetVisible = true;
       inputValue = "";
@@ -186,25 +256,72 @@
     }
   });
 
+  // Close search when switching files.
+  // untrack(findWidgetVisible) so this effect only re-runs on file path
+  // changes, not when the trigger effect sets findWidgetVisible = true.
+  $effect(() => {
+    $vaultStore.currentFilePath;
+    untrack(() => {
+      if (findWidgetVisible) {
+        closeFindWidget();
+      }
+    });
+  });
+
+  // Run search when query, mode, or targets change
   $effect(() => {
     const query = findQuery;
     const caseSensitive = findCaseSensitive;
-    const _html = html;
-    if (!container) return;
+    const mode = $editorMode;
+    const container = $previewContainerStore;
+    const view = $editorViewStore;
+    const _version = $previewRenderVersion;
+
+    if (!findWidgetVisible) return;
 
     untrack(() => {
-      unhighlightMatches();
+      // Clean up both backends before switching
+      unhighlightMatches(container);
+      if (mode === "source" && view) {
+        // Clear any stale editor decorations from a previous preview session
+      }
 
       if (query.trim()) {
-        const markdownBody = container!.querySelector(".markdown-body") as HTMLElement;
-        if (markdownBody) {
-          findMatches = highlightMatches(markdownBody, query, caseSensitive);
-          if (findMatches.length > 0) {
+        if (mode === "source" && view) {
+          // Source backend: CodeMirror SearchCursor
+          const matches = searchInEditor(view, query, caseSensitive);
+          findMatches = matches;
+          if (matches.length > 0) {
             findCurrentIndex = 0;
-            highlightCurrentMatch(true);
+            view.dispatch({
+              effects: setSearchMatches.of({ matches, currentIndex: 0 }),
+            });
+            scrollToEditorMatch(view, matches[0]);
           } else {
             findCurrentIndex = -1;
+            view.dispatch({
+              effects: setSearchMatches.of({ matches: [], currentIndex: -1 }),
+            });
           }
+        } else if (container) {
+          // Preview/split backend: DOM text-node highlighting
+          const markdownBody = container.querySelector(".markdown-body") as HTMLElement;
+          if (markdownBody) {
+            const matches = highlightMatches(markdownBody, query, caseSensitive);
+            findMatches = matches;
+            if (matches.length > 0) {
+              findCurrentIndex = 0;
+              highlightCurrentMatch(true);
+            } else {
+              findCurrentIndex = -1;
+            }
+          } else {
+            findMatches = [];
+            findCurrentIndex = -1;
+          }
+        } else {
+          findMatches = [];
+          findCurrentIndex = -1;
         }
       } else {
         findMatches = [];
@@ -216,7 +333,7 @@
 
 {#if findWidgetVisible}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="preview-find-widget" class:embedded onkeydown={(e) => e.stopPropagation()}>
+  <div class="find-widget" onkeydown={(e) => e.stopPropagation()}>
     <div class="find-input-container">
       <input
         bind:this={findInputEl}
@@ -274,7 +391,7 @@
 {/if}
 
 <style>
-  .preview-find-widget {
+  .find-widget {
     position: absolute;
     top: 12px;
     right: 24px;
@@ -289,10 +406,6 @@
     z-index: 1000;
     min-width: 250px;
     font-size: 13px;
-  }
-
-  .preview-find-widget.embedded {
-    display: none;
   }
 
   .find-input-container {
@@ -386,7 +499,7 @@
     color: #ef4444;
   }
 
-  /* Highlighting matches - global because <mark> elements live in the parent's DOM */
+  /* Preview DOM match highlights (global because <mark> elements live in the preview's DOM) */
   :global(.preview-find-match) {
     background-color: rgba(255, 235, 59, 0.45) !important;
     border-radius: 2px;
@@ -408,5 +521,25 @@
   :global(.dark) :global(.preview-find-match-current) {
     background-color: rgba(255, 152, 0, 0.55) !important;
     color: inherit;
+  }
+
+  /* CodeMirror source-mode match highlights */
+  :global(.cm-find-match) {
+    background-color: rgba(255, 235, 59, 0.45) !important;
+    border-radius: 2px;
+  }
+
+  :global(.cm-find-match-current) {
+    background-color: rgba(255, 152, 0, 0.75) !important;
+    outline: 1.5px solid var(--interactive-accent);
+    box-shadow: 0 0 4px var(--interactive-accent);
+  }
+
+  :global(.dark) :global(.cm-find-match) {
+    background-color: rgba(255, 235, 59, 0.25) !important;
+  }
+
+  :global(.dark) :global(.cm-find-match-current) {
+    background-color: rgba(255, 152, 0, 0.55) !important;
   }
 </style>

@@ -2,12 +2,12 @@
 import { onMount, untrack, tick } from "svelte";
   import { EditorView } from "codemirror";
   import { EditorState, Compartment, Prec } from "@codemirror/state";
-  import { openSearchPanel } from "@codemirror/search";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { createBasicSetup, createExtensions, getLanguageExtension } from "./cm-extensions";
+  import { searchExtension } from "./search-extension";
   import { theme } from "../../stores/theme";
   import { settingsStore } from "../../stores/settings";
-  import { pendingNavRange, triggerFindCount } from "../../stores/editor";
+  import { pendingNavRange, editorViewStore } from "../../stores/editor";
   import { vaultStore } from "../../stores/vault";
   import type { Extension } from "@codemirror/state";
   import LinkPreview from "../ui/LinkPreview.svelte";
@@ -145,6 +145,7 @@ import { onMount, untrack, tick } from "svelte";
         languageCompartment.of(getLanguageExtension(languagePath)),
         themeCompartment.of(initialTheme),
         EditorView.editable.of(!readonly),
+        searchExtension,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isSyncing && onContentChange) {
             isLocalEdit = true;
@@ -159,6 +160,7 @@ import { onMount, untrack, tick } from "svelte";
     });
 
     view = new EditorView({ state, parent: container });
+    editorViewStore.set(view);
     scrollerEl = container.querySelector(".cm-scroller");
 
     const handleScroll = () => {
@@ -171,6 +173,12 @@ import { onMount, untrack, tick } from "svelte";
     scrollEditorToRatio(initialScrollRatio);
     hasAppliedInitialScroll = true;
     handleScroll();
+    // Re-apply after layout completes — the container may not have its
+    // final dimensions at mount time (e.g., switching from preview mode).
+    requestAnimationFrame(() => {
+      if (isDestroyed || !scrollerEl) return;
+      scrollEditorToRatio(initialScrollRatio);
+    });
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!view || isDestroyed) return;
@@ -324,16 +332,16 @@ import { onMount, untrack, tick } from "svelte";
       scrollerEl?.removeEventListener("mouseleave", handleMouseLeave);
       scrollerEl = null;
       isDestroyed = true;
+      editorViewStore.set(null);
       view.destroy();
     };
   });
 
-  // Sync external content, apply cursor navigation, and handle find requests.
+  // Sync external content and apply cursor navigation.
   // Uses untrack() when writing back to stores to avoid reactive re-triggers.
   $effect(() => {
     const text = content;
     const navRange = $pendingNavRange;
-    const findTick = $triggerFindCount;
     if (!view || isDestroyed) return;
     const current = view.state.doc.toString();
 
@@ -371,13 +379,6 @@ import { onMount, untrack, tick } from "svelte";
       });
       view.focus();
       untrack(() => pendingNavRange.set(null));
-    }
-
-    // Open find panel on request (focus editor first so the input gets focus)
-    if (findTick > 0) {
-      view.focus();
-      openSearchPanel(view);
-      untrack(() => triggerFindCount.set(0));
     }
   });
 
