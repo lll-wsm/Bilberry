@@ -89,6 +89,7 @@
         if (initialVault) {
           vaultStore.openVault(initialVault).then(() => {
             addToHistory(initialVault);
+            sidebarOpen = true;
             if (initialFile) {
               vaultStore.openNote(initialFile);
               addToRecent(initialFile, "file");
@@ -319,6 +320,7 @@
           }
           await addToHistory(selected);
           recentDirs = await loadHistory();
+          sidebarOpen = true;
         } catch (e) {
           alert(t("alert.openDirectoryFailed", { error: String(e) }));
         }
@@ -340,6 +342,7 @@
         }
         await addToHistory(selected);
         recentDirs = await loadHistory();
+        sidebarOpen = true;
       } catch (e) {
         alert(t("alert.openDirectoryFailed", { error: String(e) }));
       }
@@ -385,6 +388,7 @@
         }
         await addToHistory(path);
         recentDirs = await loadHistory();
+        sidebarOpen = true;
       } catch (e) {
         alert(t("alert.openDirectoryFailed", { error: String(e) }));
         await removeFromHistory(path);
@@ -437,10 +441,6 @@
           content={$vaultStore.currentContent}
           {onContentChange}
         />
-      {:else if $vaultStore.vault}
-        <div class="empty-state">
-          <p>{t("empty.selectNoteToEdit")}</p>
-        </div>
       {:else}
         <div class="empty-state"></div>
       {/if}

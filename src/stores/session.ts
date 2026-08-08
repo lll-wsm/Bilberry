@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface SessionData {
   activeTab: string | null;
-  scrollPositions: Record<string, { anchor: number; head: number }>;
+  scrollPositions: Record<string, { anchor: number; head: number; scrollRatio?: number }>;
 }
 
 export async function saveSession(vaultPath: string, data: SessionData) {

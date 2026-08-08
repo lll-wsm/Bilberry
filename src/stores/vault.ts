@@ -52,7 +52,7 @@ interface VaultState {
   currentFilePath: string | null;
   currentContent: string;
   currentEncoding: string;
-  scrollPositions: Record<string, { anchor: number; head: number }>;
+  scrollPositions: Record<string, { anchor: number; head: number; scrollRatio?: number }>;
   searchResults: SearchResult[];
   searchQuery: string;
   searchReady: boolean;
@@ -430,7 +430,7 @@ function createVaultStore() {
         }));
 
         // Restore the last cursor/scroll position for this file, if any.
-        let savedPos: { anchor: number; head: number } | null = null;
+        let savedPos: { anchor: number; head: number; scrollRatio?: number } | null = null;
         const posUnsub = subscribe((s) => { savedPos = s.scrollPositions[path] ?? null; });
         posUnsub();
         if (savedPos) pendingNavRange.set(savedPos);
@@ -523,7 +523,7 @@ function createVaultStore() {
 
         // Restore the last cursor/scroll position for this file, if any,
         // so re-opening a file doesn't always jump back to the first line.
-        let savedPos: { anchor: number; head: number } | null = null;
+        let savedPos: { anchor: number; head: number; scrollRatio?: number } | null = null;
         const posUnsub = subscribe((s) => { savedPos = s.scrollPositions[path] ?? null; });
         posUnsub();
         if (savedPos) pendingNavRange.set(savedPos);
@@ -564,11 +564,28 @@ function createVaultStore() {
 
     updateScrollPosition(path: string, pos: { anchor: number; head: number }) {
       update((s) => {
+        const existing = s.scrollPositions[path];
         const newState = {
           ...s,
           scrollPositions: {
             ...s.scrollPositions,
-            [path]: pos
+            [path]: { ...existing, ...pos }
+          }
+        };
+        persistSession(newState);
+        return newState;
+      });
+    },
+
+    /// Save the scroll ratio for a file so it can be restored when switching back.
+    updateScrollRatio(path: string, ratio: number) {
+      update((s) => {
+        const existing = s.scrollPositions[path] ?? { anchor: 0, head: 0 };
+        const newState = {
+          ...s,
+          scrollPositions: {
+            ...s.scrollPositions,
+            [path]: { ...existing, scrollRatio: ratio }
           }
         };
         persistSession(newState);

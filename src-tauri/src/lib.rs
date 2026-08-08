@@ -23,13 +23,13 @@ fn spawn_window(app: &tauri::AppHandle, url: &str, w: f64, h: f64, min_w: f64, m
 
 #[tauri::command]
 fn create_new_window(app: tauri::AppHandle) {
-    spawn_window(&app, "index.html", 720.0, 680.0, 500.0, 400.0);
+    spawn_window(&app, "index.html", 864.0, 680.0, 500.0, 400.0);
 }
 
 /// Open a new window with an untitled document ready to edit.
 #[tauri::command]
 fn new_file_window(app: tauri::AppHandle) {
-    spawn_window(&app, "index.html?untitled=1", 720.0, 680.0, 500.0, 400.0);
+    spawn_window(&app, "index.html?untitled=1", 864.0, 680.0, 500.0, 400.0);
 }
 
 /// A preview theme as shipped by the frontend (`src/lib/themes/preview-themes.ts`
@@ -152,7 +152,7 @@ fn open_in_new_window(app: tauri::AppHandle, vault_path: Option<String>, file_pa
     
     let url_str = format!("index.html{}", query);
 
-    spawn_window(&app, &url_str, 720.0, 680.0, 500.0, 400.0);
+    spawn_window(&app, &url_str, 864.0, 680.0, 500.0, 400.0);
 }
 
 #[tauri::command]
@@ -243,7 +243,7 @@ pub fn run() {
                     app.emit("menu-open-file", ()).ok();
                 }
                 "new_file" => {
-                    spawn_window(app, "index.html?untitled=1", 720.0, 680.0, 500.0, 400.0);
+                    spawn_window(app, "index.html?untitled=1", 864.0, 680.0, 500.0, 400.0);
                 }
                 "save" => {
                     app.emit("menu-save", ()).ok();

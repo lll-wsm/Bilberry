@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { editorStore, triggerFindCount } from "../../stores/editor";
   import { currentFileIsImage, currentFileIsMermaid, currentFileSupportsPreview, currentFile, vaultStore } from "../../stores/vault";
   import { contextMenu, type ContextMenuItem } from "../../stores/contextMenu";
@@ -16,6 +17,19 @@
   } = $props();
 
   let viewScrollRatio = $state(0);
+
+  // When the active file changes, restore its saved scroll ratio so the
+  // preview pane starts at the right position. Falls back to 0 (top) for
+  // new files. Uses untrack so cursor-move saves don't re-trigger this.
+  $effect(() => {
+    const path = $currentFile;
+    if (!path) {
+      viewScrollRatio = 0;
+      return;
+    }
+    const saved = untrack(() => $vaultStore.scrollPositions[path]);
+    viewScrollRatio = saved?.scrollRatio ?? 0;
+  });
 
   function triggerFind() {
     triggerFindCount.update(n => n + 1);

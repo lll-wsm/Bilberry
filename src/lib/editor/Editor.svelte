@@ -31,6 +31,7 @@ import { onMount, untrack, tick } from "svelte";
   let scrollerEl: HTMLElement | null = null;
   let hasAppliedInitialScroll = false;
   let lastAppliedScrollRatio: number | null = null;
+  let scrollRatioSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Editor-specific hover tracking (which doc range is currently hovered)
   let hoveredLinkRange: { start: number; end: number } | null = null;
@@ -168,6 +169,16 @@ import { onMount, untrack, tick } from "svelte";
       const maxScroll = scrollerEl.scrollHeight - scrollerEl.clientHeight;
       const ratio = maxScroll > 0 ? scrollerEl.scrollTop / maxScroll : 0;
       onScrollChange(ratio);
+      // Debounced save of scroll ratio for the current file so it can be
+      // restored when switching back.
+      if (contentPath && !isSyncing) {
+        if (scrollRatioSaveTimer) clearTimeout(scrollRatioSaveTimer);
+        scrollRatioSaveTimer = setTimeout(() => {
+          if (!isDestroyed && contentPath) {
+            vaultStore.updateScrollRatio(contentPath, ratio);
+          }
+        }, 300);
+      }
     };
     scrollerEl?.addEventListener("scroll", handleScroll, { passive: true });
     scrollEditorToRatio(initialScrollRatio);
@@ -330,6 +341,7 @@ import { onMount, untrack, tick } from "svelte";
       scrollerEl?.removeEventListener("mousemove", handleMouseMove);
       scrollerEl?.removeEventListener("click", handleMouseClick, true);
       scrollerEl?.removeEventListener("mouseleave", handleMouseLeave);
+      if (scrollRatioSaveTimer) clearTimeout(scrollRatioSaveTimer);
       scrollerEl = null;
       isDestroyed = true;
       editorViewStore.set(null);
@@ -345,6 +357,10 @@ import { onMount, untrack, tick } from "svelte";
     if (!view || isDestroyed) return;
     const current = view.state.doc.toString();
 
+    // Track whether this run replaced the document content from outside
+    // (file switch), so we can reset scroll for files without a saved position.
+    let externalContentChange = false;
+
     // Sync content — but skip when the change originated from the editor
     // itself (user typing).  Without this guard the reactive round-trip
     // (editor → store → prop → $effect) causes a full-document replacement
@@ -358,6 +374,7 @@ import { onMount, untrack, tick } from "svelte";
           changes: { from: 0, to: current.length, insert: text },
         });
         isSyncing = false;
+        externalContentChange = true;
         // Content (and thus line metrics) changed - force a fresh viewport
         // measurement so posAtCoords/clicks never rely on stale coordinates.
         tick().then(() => {
@@ -375,10 +392,34 @@ import { onMount, untrack, tick } from "svelte";
       const head = Math.min(navRange.head, view.state.doc.length);
       view.dispatch({
         selection: { anchor, head },
-        effects: [EditorView.scrollIntoView(head, { y: "center" })],
       });
+      // Restore the exact scroll position if we have a saved ratio;
+      // otherwise center the cursor in the viewport.
+      if (navRange.scrollRatio != null && scrollerEl) {
+        const ratio = navRange.scrollRatio;
+        const applyScroll = () => {
+          if (!isDestroyed && scrollerEl) {
+            const maxScroll = scrollerEl.scrollHeight - scrollerEl.clientHeight;
+            scrollerEl.scrollTop = maxScroll > 0 ? maxScroll * ratio : 0;
+          }
+        };
+        applyScroll();
+        requestAnimationFrame(applyScroll);
+      } else {
+        view.dispatch({
+          effects: [EditorView.scrollIntoView(head, { y: "center" })],
+        });
+      }
       view.focus();
       untrack(() => pendingNavRange.set(null));
+    } else if (externalContentChange) {
+      // No saved cursor position (new file) - reset scroll to top so the
+      // editor doesn't inherit the previous file's scroll offset.  Applied
+      // both immediately and after layout, mirroring the onMount pattern.
+      if (scrollerEl) scrollerEl.scrollTop = 0;
+      requestAnimationFrame(() => {
+        if (!isDestroyed && scrollerEl) scrollerEl.scrollTop = 0;
+      });
     }
   });
 

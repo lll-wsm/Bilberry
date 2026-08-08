@@ -24,6 +24,7 @@
   let container = $state<HTMLDivElement>();
   let result: RenderResult | undefined = $state.raw();
   let renderError: string | null = $state(null);
+  let scrollRatioSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   function getMimeType(filePath: string): string {
     const lower = filePath.toLowerCase();
@@ -237,6 +238,15 @@
     const maxScroll = container.scrollHeight - container.clientHeight;
     const ratio = maxScroll > 0 ? container.scrollTop / maxScroll : 0;
     onScrollChange(ratio);
+    // Debounced save of scroll ratio for the current file (preview-only mode).
+    if (currentFilePath) {
+      if (scrollRatioSaveTimer) clearTimeout(scrollRatioSaveTimer);
+      scrollRatioSaveTimer = setTimeout(() => {
+        if (container && currentFilePath) {
+          vaultStore.updateScrollRatio(currentFilePath, ratio);
+        }
+      }, 300);
+    }
   }
 
   async function handleLinkClick(e: MouseEvent) {

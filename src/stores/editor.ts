@@ -2,7 +2,7 @@ import { writable, derived } from "svelte/store";
 import type { EditorView } from "@codemirror/view";
 
 /// Position range in the current document to select (anchor → head)
-export const pendingNavRange = writable<{anchor: number; head: number} | null>(null);
+export const pendingNavRange = writable<{anchor: number; head: number; scrollRatio?: number} | null>(null);
 
 /// Increment to trigger the unified find widget
 export const triggerFindCount = writable(0);
