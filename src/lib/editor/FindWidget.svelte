@@ -10,7 +10,7 @@
     previewRenderVersion,
     editorMode,
   } from "../../stores/editor";
-  import { vaultStore } from "../../stores/vault";
+  import { currentFile } from "../../stores/vault";
   import { setSearchMatches, type SearchMatch } from "./search-extension";
   import { t } from "../i18n/i18n.svelte";
 
@@ -257,10 +257,17 @@
   });
 
   // Close search when switching files.
-  // untrack(findWidgetVisible) so this effect only re-runs on file path
-  // changes, not when the trigger effect sets findWidgetVisible = true.
+  // Two traps this effect has to avoid:
+  //  - Read the derived `currentFile` store, NOT `$vaultStore.currentFilePath`.
+  //    Svelte 5 re-runs effects that read `$someStore.x` on EVERY notification
+  //    of that store (object values are never considered equal), so unrelated
+  //    writes such as saving the preview scroll ratio closed the widget while
+  //    the user was still typing. `currentFile` notifies only when the path
+  //    actually changes.
+  //  - untrack(findWidgetVisible) so the trigger effect setting it to true
+  //    does not re-run this one.
   $effect(() => {
-    $vaultStore.currentFilePath;
+    $currentFile;
     untrack(() => {
       if (findWidgetVisible) {
         closeFindWidget();
